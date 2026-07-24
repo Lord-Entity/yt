@@ -1,6 +1,8 @@
 import type { AudioBitrate, DownloadHandle, DownloadProgress, FormatOption, VideoInfo } from "../lib/types";
 import { asAppError, startDownload } from "./engine";
 import { addLibraryItem } from "./library";
+import { navigate } from "./nav";
+import { notify } from "./toast";
 import { isActive, type Job } from "./models";
 import { settingsStore } from "./settings";
 import { createStore, useStore } from "./store";
@@ -142,6 +144,21 @@ function finish(id: string, last: DownloadProgress) {
     finishedAt: Date.now(),
   };
   patch(id, done);
+  if (status === "done") {
+    notify({
+      tone: "success",
+      title: "Saved to your library",
+      body: done.summary ?? done.title,
+      action: { label: "Open downloads", run: () => navigate("downloads") },
+    });
+  } else if (status === "failed") {
+    notify({
+      tone: "error",
+      title: "Download failed",
+      body: `${done.title}: ${done.error?.message ?? "Unknown error"}`,
+      duration: 6000,
+    });
+  }
   if (status !== "cancelled") {
     addLibraryItem({
       id: done.id,

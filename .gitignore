@@ -4,4 +4,4 @@ src-tauri/target
 src-tauri/gen
 src-tauri/binaries/*
 !src-tauri/binaries/.gitkeep
-.fetchly-tmp
+.keepsake-tmp

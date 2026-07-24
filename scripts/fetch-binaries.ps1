@@ -19,7 +19,7 @@ $ProgressPreference = "SilentlyContinue"   # Invoke-WebRequest is very slow with
 $root = Split-Path -Parent $PSScriptRoot
 $lock = Get-Content -Raw (Join-Path $PSScriptRoot "binaries.lock.json") | ConvertFrom-Json
 $bin = Join-Path $root "src-tauri\binaries"
-$tmp = Join-Path ([IO.Path]::GetTempPath()) ("fetchly-bin-" + [Guid]::NewGuid().ToString("N"))
+$tmp = Join-Path ([IO.Path]::GetTempPath()) ("keepsake-bin-" + [Guid]::NewGuid().ToString("N"))
 New-Item -ItemType Directory -Force $bin, $tmp | Out-Null
 
 function Get-Checked([string]$Name, $Entry, [string]$Dest) {

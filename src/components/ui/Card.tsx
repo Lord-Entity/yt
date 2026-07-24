@@ -1,6 +1,6 @@
 import { motion, useReducedMotion, type HTMLMotionProps } from "motion/react";
 import type { CSSProperties, ReactNode } from "react";
-import { t } from "./motion";
+import { press, t } from "./motion";
 
 export interface Span {
   /** Columns / rows at the wide layout. */
@@ -44,9 +44,9 @@ export function Card({
   return (
     <motion.section
       layout={reduced ? false : "position"}
-      whileHover={lift ? { y: -2 } : undefined}
-      whileTap={lift ? { scale: 0.99 } : undefined}
-      transition={t.base}
+      whileHover={lift ? { y: -3 } : undefined}
+      whileTap={lift ? press : undefined}
+      transition={t.spring}
       style={{ ...spanStyle(span, narrow), ...(style as CSSProperties) }}
       className={`card ${interactive ? "card-interactive" : ""} ${tint ? "card-tint" : ""} flex min-w-0 flex-col p-5 ${className}`}
       {...rest}

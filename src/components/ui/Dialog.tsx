@@ -73,7 +73,7 @@ export function Dialog({
             initial={reduced ? { opacity: 0 } : { opacity: 0, scale: 0.97, y: 6 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={reduced ? { opacity: 0 } : { opacity: 0, scale: 0.98 }}
-            transition={t.base}
+            transition={t.spring}
             style={fullScreen ? undefined : { width, maxWidth: "100%" }}
             className={`flex max-h-full flex-col bg-card text-fg shadow-pop outline-none ${
               fullScreen

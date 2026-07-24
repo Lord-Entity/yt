@@ -216,13 +216,13 @@ export const ERROR_TEXT: Record<AppErrorCode, string> = {
   network: "Couldn't reach the site. Check your internet connection and try again.",
   timeout: "The connection timed out. Check your internet connection and try again.",
   ssl: "A secure connection (SSL) to the site failed. Check your connection, system clock, or any proxy/antivirus interfering.",
-  ffmpeg_missing: "ffmpeg is missing. Merging and audio conversion won't work. Reinstall Fetchly.",
-  ytdlp_missing: "yt-dlp is missing or damaged. Reinstall Fetchly.",
+  ffmpeg_missing: "ffmpeg is missing. Merging and audio conversion won't work. Reinstall Keepsake.",
+  ytdlp_missing: "yt-dlp is missing or damaged. Reinstall Keepsake.",
   no_formats: `No downloadable video was found on this page. If the video requires a login, ${COOKIE_HINT[0].toLowerCase()}${COOKIE_HINT.slice(1)}`,
   bad_folder: "Can't save to this folder. Choose another folder in Settings.",
   empty_url: "Paste a link first.",
   web_cors:
-    "The browser preview can't read video links (the browser blocks cross-site requests). Use the Fetchly desktop or Android app.",
+    "The browser preview can't read video links (the browser blocks cross-site requests). Use the Keepsake desktop or Android app.",
   cancelled: "Cancelled",
   unknown: "Unknown error",
 };

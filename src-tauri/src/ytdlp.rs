@@ -175,7 +175,7 @@ fn validate_args(args: &[String]) -> Result<(), String> {
     Ok(())
 }
 
-/// Only `<anything>/.fetchly-tmp/<jobId>` may be deleted after a run.
+/// Only `<anything>/.keepsake-tmp/<jobId>` may be deleted after a run.
 fn temp_dir_for_job(temp_dir: &str, job_id: &str) -> Option<PathBuf> {
     let p = PathBuf::from(temp_dir);
     let ok = p.is_absolute()
@@ -185,7 +185,7 @@ fn temp_dir_for_job(temp_dir: &str, job_id: &str) -> Option<PathBuf> {
         && p.file_name().is_some_and(|n| n == job_id)
         && p.parent()
             .and_then(Path::file_name)
-            .is_some_and(|n| n == ".fetchly-tmp");
+            .is_some_and(|n| n == ".keepsake-tmp");
     ok.then_some(p)
 }
 
@@ -314,9 +314,9 @@ fn run_blocking(
             return Err(format!("job {job_id} is already running"));
         }
         if let Some(t) = &temp_dir {
-            // Marker lets a startup sweep recognise folders Fetchly created.
+            // Marker lets a startup sweep recognise folders Keepsake created.
             std::fs::create_dir_all(t).map_err(|e| format!("cannot create temp folder: {e}"))?;
-            let _ = std::fs::write(t.join(".fetchly-job"), &job_id);
+            let _ = std::fs::write(t.join(".keepsake-job"), &job_id);
         }
         let child = cmd.spawn().map_err(|e| {
             if let Some(t) = &temp_dir {
@@ -352,7 +352,7 @@ fn run_blocking(
 }
 
 /// Run yt-dlp to completion, streaming lines to `on_event`. Resolves with the exit code.
-/// `temp_dir`, when given, must be `<abs path>/.fetchly-tmp/<jobId>`; it is deleted after exit.
+/// `temp_dir`, when given, must be `<abs path>/.keepsake-tmp/<jobId>`; it is deleted after exit.
 #[tauri::command]
 pub async fn run_ytdlp(
     app: AppHandle,
@@ -366,7 +366,7 @@ pub async fn run_ytdlp(
     let temp = match temp_dir.as_deref() {
         Some(t) => Some(
             temp_dir_for_job(t, &job_id)
-                .ok_or("tempDir must be an absolute path ending in .fetchly-tmp/<jobId>")?,
+                .ok_or("tempDir must be an absolute path ending in .keepsake-tmp/<jobId>")?,
         ),
         None => None,
     };
@@ -505,11 +505,11 @@ mod tests {
             "/home/u/Downloads"
         };
         let sep = std::path::MAIN_SEPARATOR;
-        let good = format!("{base}{sep}.fetchly-tmp{sep}job1");
+        let good = format!("{base}{sep}.keepsake-tmp{sep}job1");
         assert!(temp_dir_for_job(&good, "job1").is_some());
         assert!(temp_dir_for_job(&good, "job2").is_none());
         assert!(temp_dir_for_job(base, "job1").is_none());
-        assert!(temp_dir_for_job(".fetchly-tmp/job1", "job1").is_none());
+        assert!(temp_dir_for_job(".keepsake-tmp/job1", "job1").is_none());
     }
 
     #[test]

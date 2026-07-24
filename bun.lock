@@ -3,7 +3,7 @@
   "configVersion": 1,
   "workspaces": {
     "": {
-      "name": "fetchly",
+      "name": "keepsake",
       "dependencies": {
         "@ffmpeg/ffmpeg": "0.12.15",
         "@ffmpeg/util": "0.12.2",

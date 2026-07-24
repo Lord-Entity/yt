@@ -202,10 +202,10 @@ export async function fetchInfoYtdlp(
 // ---------------- download ----------------
 
 const PROGRESS_TEMPLATE =
-  "download:FETCHLY|%(progress.status)s|%(progress.downloaded_bytes)s|%(progress.total_bytes)s|" +
+  "download:KEEPSAKE|%(progress.status)s|%(progress.downloaded_bytes)s|%(progress.total_bytes)s|" +
   "%(progress.total_bytes_estimate)s|%(progress.speed)s|%(progress.eta)s|%(info.playlist_index)s|" +
   "%(info.n_entries)s|%(progress.filename)s";
-const PP_TEMPLATE = "postprocess:FETCHLY_PP|%(progress.status)s|%(progress.postprocessor)s";
+const PP_TEMPLATE = "postprocess:KEEPSAKE_PP|%(progress.status)s|%(progress.postprocessor)s";
 
 function sep(dir: string): string {
   return dir.includes("\\") ? "\\" : "/";
@@ -215,7 +215,7 @@ function sep(dir: string): string {
 export function buildDownloadArgs(req: DownloadRequest, outDir: string): { args: string[]; tempDir: string } {
   assertHttpUrl(req.url);
   const s = sep(outDir);
-  const tempDir = `${outDir.replace(/[\\/]+$/, "")}${s}.fetchly-tmp${s}${req.id}`;
+  const tempDir = `${outDir.replace(/[\\/]+$/, "")}${s}.keepsake-tmp${s}${req.id}`;
   // Keep full paths under ~240 chars on Windows.
   const trim = Math.max(60, Math.min(200, 240 - outDir.length));
   const a = [
@@ -234,7 +234,7 @@ export function buildDownloadArgs(req: DownloadRequest, outDir: string): { args:
     "--progress-template",
     PP_TEMPLATE,
     "--print",
-    "after_move:FETCHLY_DONE|%(filepath)s",
+    "after_move:KEEPSAKE_DONE|%(filepath)s",
     "-i",
   ];
   const [kind, value = ""] = req.formatId.split(":");
@@ -264,7 +264,7 @@ export function buildDownloadArgs(req: DownloadRequest, outDir: string): { args:
     a.push("--skip-download", "--write-thumbnail", "-o", "thumbnail:%(title)s_thumb.%(ext)s");
     if (value === "png" || value === "jpg") a.push("--convert-thumbnails", value);
     // --skip-download never reaches after_move; print the written thumbnail path instead (INFERRED).
-    a.push("--print", "after_video:FETCHLY_DONE|%(thumbnails.-1.filepath)s");
+    a.push("--print", "after_video:KEEPSAKE_DONE|%(thumbnails.-1.filepath)s");
   } else {
     fail("format_unavailable", req.formatId);
   }
@@ -278,9 +278,9 @@ function num(v: string | undefined): number | undefined {
   return Number.isFinite(n) ? n : undefined;
 }
 
-/** Parse one FETCHLY progress line (exported for tests). */
+/** Parse one KEEPSAKE progress line (exported for tests). */
 export function parseProgressLine(line: string): Partial<DownloadProgress> | null {
-  const i = line.indexOf("FETCHLY|");
+  const i = line.indexOf("KEEPSAKE|");
   if (i < 0) return null;
   const [, status, dl, total, est, speed, eta, pIdx, nEntries] = line.slice(i).split("|");
   const downloaded = num(dl) ?? 0;
@@ -315,14 +315,14 @@ export async function downloadYtdlp(
       if (p) {
         last = { ...last, ...p, id: req.id };
         emit(last);
-      } else if (line.includes("FETCHLY_PP|")) {
+      } else if (line.includes("KEEPSAKE_PP|")) {
         const st = line.split("|")[1];
         if (st === "started" || st === "processing") {
           last = { ...last, status: "merging", percent: undefined };
           emit(last);
         }
-      } else if (line.startsWith("FETCHLY_DONE|")) {
-        files.push(line.slice("FETCHLY_DONE|".length));
+      } else if (line.startsWith("KEEPSAKE_DONE|")) {
+        files.push(line.slice("KEEPSAKE_DONE|".length));
       } else if (line.includes("ERROR:")) {
         errors.push(line);
       }

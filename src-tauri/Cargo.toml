@@ -1,12 +1,12 @@
 [package]
-name = "fetchly"
+name = "keepsake"
 version = "2.1.0"
 edition = "2021"
 # tauri-plugin-http 2.8 and tauri-plugin-fs 2.7 declare rust-version 1.90.
 rust-version = "1.90"
 
 [lib]
-name = "fetchly_lib"
+name = "keepsake_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]

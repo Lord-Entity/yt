@@ -1,6 +1,6 @@
-# Fetchly
+# Keepsake
 
-Fetchly is a video and audio downloader for Windows, Linux and Android, built from one codebase with Tauri v2, React, TypeScript and Tailwind CSS v4.
+Keepsake is a video and audio downloader for Windows, Linux and Android, built from one codebase with Tauri v2, React, TypeScript and Tailwind CSS v4.
 
 Paste a link, preview it, pick a format (video quality, audio format and bitrate, or thumbnail), and download it. Finished downloads appear in a Library, and Settings holds the save folder, parallel downloads, cookies and other options.
 
@@ -94,9 +94,9 @@ See [README-ANDROID.md](README-ANDROID.md). You can build the APK in GitHub Acti
 
 | Job | Runner | Builds | Artifact names |
 |---|---|---|---|
-| `windows` | `windows-latest` (MSVC Rust) | `bun run build:windows` | `fetchly-windows-nsis` (`.exe`), `fetchly-windows-msi` (`.msi`) |
-| `linux` | `ubuntu-22.04` | `bun run build:linux` | `fetchly-linux-deb`, `fetchly-linux-rpm`, `fetchly-linux-appimage` |
-| `android` | `ubuntu-latest` (JDK 17, SDK, NDK) | `bun run android:init`, then `bun run build:android --debug` | `fetchly-android-apk` |
+| `windows` | `windows-latest` (MSVC Rust) | `bun run build:windows` | `keepsake-windows-nsis` (`.exe`), `keepsake-windows-msi` (`.msi`) |
+| `linux` | `ubuntu-22.04` | `bun run build:linux` | `keepsake-linux-deb`, `keepsake-linux-rpm`, `keepsake-linux-appimage` |
+| `android` | `ubuntu-latest` (JDK 17, SDK, NDK) | `bun run android:init`, then `bun run build:android --debug` | `keepsake-android-apk` |
 
 The desktop jobs first run `scripts/fetch-binaries.ps1` / `scripts/fetch-binaries.sh`, which download yt-dlp 2026.08.19 and the BtbN ffmpeg/ffprobe (LGPL build) into `src-tauri/binaries` and check SHA-256 against `scripts/binaries.lock.json`. The Android job skips this, because Android ships no sidecars.
 
@@ -108,12 +108,12 @@ The desktop jobs first run `scripts/fetch-binaries.ps1` / `scripts/fetch-binarie
    cd "C:/Users/Bazil Suhail/Documents/YT-VideoDowloader/fetchly"
    git add .
    git status            # check that nothing under src-tauri/binaries is listed except .gitkeep
-   git commit -m "Fetchly"
+   git commit -m "Keepsake"
    git branch -M main
    git remote add origin https://github.com/<your-user>/fetchly.git
    git push -u origin main
    ```
-   If the repository root is the parent folder instead, move `.github` there and set `FETCHLY_DIR: fetchly` at the top of `build.yml`.
+   If the repository root is the parent folder instead, move `.github` there and set `KEEPSAKE_DIR: fetchly` at the top of `build.yml`.
 3. Open the **Actions** tab. The push starts the `build` workflow (or choose **build** > **Run workflow**).
 4. When the jobs finish, open the run and download the artifacts listed above from **Artifacts**.
 5. **Pin the ffmpeg hash.** Open the log of the `Fetch sidecars` step in the `windows` and `linux` jobs. Each prints `WARNING: ffmpeg has no pinned sha256 ... Computed sha256: <hash>`. Paste those into `ffmpeg.windows.sha256` and `ffmpeg.linux.sha256` in `scripts/binaries.lock.json`, and change the two `latest` URLs to the dated BtbN `autobuild-...` tag of that build. Otherwise the next BtbN daily build no longer matches the pinned hash.
@@ -125,7 +125,7 @@ The desktop jobs first run `scripts/fetch-binaries.ps1` / `scripts/fetch-binarie
 - **A custom save folder must be picked again after a restart on Android.** Folder access granted by the picker lasts for one session. On desktop, yt-dlp writes the files, so this does not apply.
 - **The web build (`bun run dev:web`) is for UI work only.** Browser CORS blocks YouTube requests outside Tauri.
 - **`.deb` and `.rpm` put the sidecars in `/usr/bin`**, which can clash with a system `yt-dlp` package. The AppImage is self-contained.
-- **Windows cancel uses `taskkill /T`.** If Fetchly itself crashes, a running yt-dlp may keep running.
+- **Windows cancel uses `taskkill /T`.** If Keepsake itself crashes, a running yt-dlp may keep running.
 - **Bitrate** applies to MP3 only. M4A and OPUS keep the source quality, and WAV and FLAC are lossless.
 - **Release signing for Android** is not set up. CI builds a debug-signed APK. See "Release signing" in BUILD.md.
 - **ffmpeg downloads are not pinned yet.** `scripts/binaries.lock.json` has the yt-dlp hashes (from the release's `SHA2-256SUMS`), but the ffmpeg hashes are empty, because the BtbN `latest` URLs change with every daily build. Until they are pinned, the scripts print the hash and continue. See step 5 above.

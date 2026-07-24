@@ -46,7 +46,7 @@ export function Splash({
       ) : (
         <>
           <div className="w-40">
-            <Progress pct={null} label="Starting Fetchly" />
+            <Progress pct={null} label="Starting Keepsake" />
           </div>
           <p className="text-[11px] leading-[14px] text-fg-2">{step}</p>
         </>

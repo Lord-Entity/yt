@@ -67,7 +67,7 @@ export function Sidebar({
               transition={t.fast}
               className="text-[15px] font-semibold tracking-tight"
             >
-              Fetchly
+              Keepsake
             </motion.span>
           )}
         </AnimatePresence>

@@ -1,16 +1,18 @@
 import { motion, type HTMLMotionProps } from "motion/react";
 import type { ReactNode } from "react";
 import { Icon, type IconName } from "./Icon";
-import { t } from "./motion";
+import { press, t } from "./motion";
 
 type Variant = "primary" | "secondary" | "ghost" | "danger" | "danger-outline";
 
 const VARIANTS: Record<Variant, string> = {
-  primary: "bg-accent text-on-accent hover:bg-accent-hover active:bg-accent-active font-semibold",
+  primary:
+    "bg-accent text-on-accent font-semibold shadow-[inset_0_1px_0_rgba(255,255,255,0.22),0_10px_22px_-12px_var(--accent)] hover:bg-accent-hover active:bg-accent-active",
   secondary:
-    "bg-inset text-fg border border-line hover:border-line-strong active:bg-card-hover",
+    "bg-inset text-fg border border-line shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] hover:border-line-strong hover:bg-card-hover active:bg-card",
   ghost: "bg-transparent text-fg-2 hover:bg-accent-soft hover:text-fg",
-  danger: "bg-danger text-white hover:brightness-110 font-semibold",
+  danger:
+    "bg-danger text-white font-semibold shadow-[inset_0_1px_0_rgba(255,255,255,0.2),0_10px_22px_-12px_var(--danger)] hover:brightness-110",
   "danger-outline": "bg-transparent text-danger border border-danger/50 hover:bg-danger/10",
 };
 
@@ -39,9 +41,10 @@ export function Button({
     <motion.button
       type={type}
       disabled={off}
-      whileTap={off ? undefined : { scale: 0.97 }}
-      transition={t.fast}
-      className={`inline-flex items-center justify-center gap-2 rounded-md text-[12px] font-medium leading-4 whitespace-nowrap transition-colors duration-150 disabled:opacity-45 disabled:pointer-events-none ${h} ${VARIANTS[variant]} ${className}`}
+      whileHover={off || variant === "ghost" ? undefined : { y: -1 }}
+      whileTap={off ? undefined : press}
+      transition={t.press}
+      className={`inline-flex items-center justify-center gap-2 rounded-md text-[12px] font-medium leading-4 whitespace-nowrap transition-[background-color,border-color,color,filter] duration-150 disabled:opacity-45 disabled:pointer-events-none ${h} ${VARIANTS[variant]} ${className}`}
       {...rest}
     >
       {loading ? <span className="spinner" aria-hidden="true" /> : icon ? <Icon name={icon} size={16} /> : null}
@@ -68,8 +71,8 @@ export function IconButton({
       type="button"
       aria-label={label}
       title={label}
-      whileTap={rest.disabled ? undefined : { scale: 0.97 }}
-      transition={t.fast}
+      whileTap={rest.disabled ? undefined : press}
+      transition={t.press}
       style={{ width: size, height: size }}
       className={`inline-flex shrink-0 items-center justify-center rounded-md transition-colors duration-150 disabled:opacity-45 disabled:pointer-events-none ${
         active ? "bg-accent-soft text-accent" : "text-fg-2 hover:bg-accent-soft hover:text-fg"

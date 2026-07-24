@@ -1,7 +1,7 @@
-# Builds Fetchly for Windows (nsis, msi), Linux (deb, rpm, AppImage) and Android (debug APK)
+# Builds Keepsake for Windows (nsis, msi), Linux (deb, rpm, AppImage) and Android (debug APK)
 # and uploads each as a workflow artifact. See README.md / BUILD.md.
 # Assumes the repository root is the `fetchly` folder. If fetchly is a subfolder of the
-# repo, move this file to <repo>/.github/workflows/ and set FETCHLY_DIR: fetchly.
+# repo, move this file to <repo>/.github/workflows/ and set KEEPSAKE_DIR: fetchly.
 name: build
 
 on:
@@ -12,7 +12,7 @@ on:
   workflow_dispatch:
 
 env:
-  FETCHLY_DIR: .
+  KEEPSAKE_DIR: .
   BUN_VERSION: "1.4.4" # same as the local dev machine
 
 jobs:
@@ -21,7 +21,7 @@ jobs:
     defaults:
       run:
         shell: pwsh
-        working-directory: ${{ env.FETCHLY_DIR }}
+        working-directory: ${{ env.KEEPSAKE_DIR }}
     steps:
       - uses: actions/checkout@v4
 
@@ -39,7 +39,7 @@ jobs:
 
       - uses: swatinem/rust-cache@v2
         with:
-          workspaces: ${{ env.FETCHLY_DIR }}/src-tauri -> target
+          workspaces: ${{ env.KEEPSAKE_DIR }}/src-tauri -> target
 
       - uses: oven-sh/setup-bun@v2
         with:
@@ -55,14 +55,14 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: fetchly-windows-nsis
-          path: ${{ env.FETCHLY_DIR }}/src-tauri/target/release/bundle/nsis/*.exe
+          name: keepsake-windows-nsis
+          path: ${{ env.KEEPSAKE_DIR }}/src-tauri/target/release/bundle/nsis/*.exe
           if-no-files-found: error
 
       - uses: actions/upload-artifact@v4
         with:
-          name: fetchly-windows-msi
-          path: ${{ env.FETCHLY_DIR }}/src-tauri/target/release/bundle/msi/*.msi
+          name: keepsake-windows-msi
+          path: ${{ env.KEEPSAKE_DIR }}/src-tauri/target/release/bundle/msi/*.msi
           if-no-files-found: error
 
   linux:
@@ -70,7 +70,7 @@ jobs:
     defaults:
       run:
         shell: bash
-        working-directory: ${{ env.FETCHLY_DIR }}
+        working-directory: ${{ env.KEEPSAKE_DIR }}
     steps:
       - uses: actions/checkout@v4
 
@@ -84,7 +84,7 @@ jobs:
 
       - uses: swatinem/rust-cache@v2
         with:
-          workspaces: ${{ env.FETCHLY_DIR }}/src-tauri -> target
+          workspaces: ${{ env.KEEPSAKE_DIR }}/src-tauri -> target
 
       - uses: oven-sh/setup-bun@v2
         with:
@@ -100,20 +100,20 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: fetchly-linux-deb
-          path: ${{ env.FETCHLY_DIR }}/src-tauri/target/release/bundle/deb/*.deb
+          name: keepsake-linux-deb
+          path: ${{ env.KEEPSAKE_DIR }}/src-tauri/target/release/bundle/deb/*.deb
           if-no-files-found: error
 
       - uses: actions/upload-artifact@v4
         with:
-          name: fetchly-linux-rpm
-          path: ${{ env.FETCHLY_DIR }}/src-tauri/target/release/bundle/rpm/*.rpm
+          name: keepsake-linux-rpm
+          path: ${{ env.KEEPSAKE_DIR }}/src-tauri/target/release/bundle/rpm/*.rpm
           if-no-files-found: error
 
       - uses: actions/upload-artifact@v4
         with:
-          name: fetchly-linux-appimage
-          path: ${{ env.FETCHLY_DIR }}/src-tauri/target/release/bundle/appimage/*.AppImage
+          name: keepsake-linux-appimage
+          path: ${{ env.KEEPSAKE_DIR }}/src-tauri/target/release/bundle/appimage/*.AppImage
           if-no-files-found: error
 
   # No fetch-binaries here: tauri.android.conf.json sets "externalBin": [] (no sidecars).
@@ -122,7 +122,7 @@ jobs:
     defaults:
       run:
         shell: bash
-        working-directory: ${{ env.FETCHLY_DIR }}
+        working-directory: ${{ env.KEEPSAKE_DIR }}
     env:
       NDK_VERSION: "27.2.12479018"
     steps:
@@ -133,12 +133,20 @@ jobs:
           distribution: temurin
           java-version: "17"
 
-      - uses: android-actions/setup-android@v3
-
+      # We do not use android-actions/setup-android: its startup runs `sdkmanager tools`, which
+      # fails on current SDK package indexes ("Failed to find package 'tools'"). The runner image
+      # already ships the Android SDK, so install the packages we need straight into it.
       - name: Install Android platform, build tools and NDK
         run: |
-          sdkmanager --install "ndk;$NDK_VERSION" "platform-tools" "build-tools;34.0.0" "platforms;android-34"
-          echo "NDK_HOME=$ANDROID_HOME/ndk/$NDK_VERSION" >> "$GITHUB_ENV"
+          SDK="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          SDKMANAGER="$SDK/cmdline-tools/latest/bin/sdkmanager"
+          if [ ! -x "$SDKMANAGER" ]; then SDKMANAGER="$(command -v sdkmanager)"; fi
+          echo "Using $SDKMANAGER"
+          yes | "$SDKMANAGER" --licenses > /dev/null || true
+          "$SDKMANAGER" --install "platform-tools" "build-tools;34.0.0" "platforms;android-34" "ndk;$NDK_VERSION"
+          echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"
+          echo "NDK_HOME=$SDK/ndk/$NDK_VERSION" >> "$GITHUB_ENV"
+          echo "ANDROID_NDK_HOME=$SDK/ndk/$NDK_VERSION" >> "$GITHUB_ENV"
 
       - uses: dtolnay/rust-toolchain@stable
 
@@ -147,7 +155,7 @@ jobs:
 
       - uses: swatinem/rust-cache@v2
         with:
-          workspaces: ${{ env.FETCHLY_DIR }}/src-tauri -> target
+          workspaces: ${{ env.KEEPSAKE_DIR }}/src-tauri -> target
 
       - uses: oven-sh/setup-bun@v2
         with:
@@ -166,6 +174,30 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: fetchly-android-apk
-          path: ${{ env.FETCHLY_DIR }}/src-tauri/gen/android/app/build/outputs/apk/**/*.apk
+          name: keepsake-android-apk
+          path: ${{ env.KEEPSAKE_DIR }}/src-tauri/gen/android/app/build/outputs/apk/**/*.apk
           if-no-files-found: error
+
+  # Runs only for version tags (git tag v2.1.0 && git push origin v2.1.0). Collects every
+  # platform artifact into a DRAFT GitHub Release, so you review it before publishing.
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [windows, linux, android]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: keepsake-*
+          path: release-files
+          merge-multiple: true
+
+      - name: List release files
+        run: ls -la release-files
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          generate_release_notes: true
+          files: release-files/*

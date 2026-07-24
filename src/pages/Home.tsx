@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { DownloadRow } from "../components/features/DownloadRow";
 import { FormatPicker, type PickerChoice } from "../components/features/FormatPicker";
 import { PreviewCard, Thumb } from "../components/features/PreviewCard";
+import { ActionModal } from "../components/ui/ActionModal";
 import { Button, IconButton } from "../components/ui/Button";
 import { Card, type Span } from "../components/ui/Card";
 import { Icon } from "../components/ui/Icon";
@@ -19,6 +20,7 @@ import { pickFolder, readClipboard } from "../state/native";
 import { navigate, useCommand, type Command } from "../state/nav";
 import { settingsStore, updateSettings, useSettings } from "../state/settings";
 import { createStore, useStore } from "../state/store";
+import { notify } from "../state/toast";
 
 interface HomeState {
   input: string;
@@ -26,7 +28,8 @@ interface HomeState {
   formats: FormatOption[];
   loading: boolean;
   error: AppError | null;
-  added: string | null;
+  /** True for ~1s after a successful fetch, so the modal can show its "Found it" state. */
+  ready: boolean;
 }
 
 /** Module-level so the preview survives page switches. */
@@ -36,11 +39,14 @@ const home = createStore<HomeState>({
   formats: [],
   loading: false,
   error: null,
-  added: null,
+  ready: false,
 });
 const setHome = (p: Partial<HomeState>) => home.set((s) => ({ ...s, ...p }));
 let fetchToken = 0;
 let fetchAbort: AbortController | null = null;
+let readyTimer: number | undefined;
+
+const FETCH_MESSAGES = ["Reading the link…", "Checking available formats…", "Almost there…"];
 
 async function runFetch(raw: string) {
   const url = raw.trim();
@@ -52,7 +58,7 @@ async function runFetch(raw: string) {
   fetchAbort?.abort();
   const ctrl = new AbortController();
   fetchAbort = ctrl;
-  setHome({ loading: true, error: null, added: null });
+  setHome({ loading: true, error: null, ready: false });
   try {
     const info = await fetchInfo(url, {
       signal: ctrl.signal,
@@ -66,7 +72,9 @@ async function runFetch(raw: string) {
       setHome({ loading: false, error: asAppError(e) });
       return;
     }
-    setHome({ info, formats, loading: false });
+    setHome({ info, formats, loading: false, ready: true });
+    window.clearTimeout(readyTimer);
+    readyTimer = window.setTimeout(() => setHome({ ready: false }), 1100);
   } catch (e) {
     if (token !== fetchToken) return;
     setHome({ loading: false, error: asAppError(e) });
@@ -78,7 +86,8 @@ function cancelFetch() {
   fetchToken++;
   fetchAbort?.abort();
   fetchAbort = null;
-  setHome({ loading: false });
+  window.clearTimeout(readyTimer);
+  setHome({ loading: false, ready: false });
 }
 
 function splitDetails(message: string): { body: string; details: string | null } {
@@ -98,7 +107,7 @@ const SPANS: Record<string, Span> = {
 
 export function HomePage({ phone }: { phone: boolean }) {
   const state = useStore(home, (s) => s);
-  const { info, formats, loading, error, input, added } = state;
+  const { info, formats, loading, error, input, ready } = state;
   const jobs = useDownloads();
   const library = useLibrary();
   const saveDir = useSettings((s) => s.saveDir);
@@ -158,16 +167,16 @@ export function HomePage({ phone }: { phone: boolean }) {
     return () => window.removeEventListener("focus", onFocus);
   }, [clipboardDetect]);
 
-  useEffect(() => {
-    if (!added) return;
-    const id = setTimeout(() => setHome({ added: null }), 4000);
-    return () => clearTimeout(id);
-  }, [added]);
-
   const onDownload = (choice: PickerChoice) => {
     if (!info) return;
     enqueue(info, choice);
-    setHome({ input: "", added: info.title });
+    setHome({ input: "" });
+    notify({
+      tone: "success",
+      title: "Added to downloads",
+      body: info.title,
+      action: { label: "View", run: () => navigate("downloads") },
+    });
     setSheet(false);
     inputRef.current?.focus();
   };
@@ -176,78 +185,82 @@ export function HomePage({ phone }: { phone: boolean }) {
   const showEmpty = !info && !loading;
 
   const pasteBar = (
-      <form
-        className="flex items-center gap-2"
-        onSubmit={(e) => {
-          e.preventDefault();
-          fetchNow();
-        }}
-      >
-        <label className="relative flex-1">
-          <Icon name="link" size={18} className="absolute top-1/2 left-3 -translate-y-1/2 text-fg-3" />
-          <input
-            ref={inputRef}
-            value={input}
-            onChange={(e) => setHome({ input: e.target.value, error: null })}
-            onKeyDown={(e) => {
-              if (e.key === "Escape" && home.get().loading) {
-                e.preventDefault();
-                cancelFetch();
-              }
-            }}
-            placeholder="Paste a video, playlist or audio link"
-            aria-label="Link"
-            spellCheck={false}
-            autoComplete="off"
-            className={`w-full rounded-md border border-line bg-inset pr-10 pl-10 text-[13px] text-fg placeholder:text-fg-3 hover:border-line-strong ${phone ? "h-12" : "h-10"}`}
-          />
-          {input && (
-            <IconButton
-              icon="x"
-              label="Clear"
-              size={phone ? 40 : 28}
-              className="absolute top-1/2 right-1.5 -translate-y-1/2"
-              onClick={() => {
-                setHome({ input: "", error: null });
-                inputRef.current?.focus();
-              }}
-            />
-          )}
-        </label>
-        <IconButton
-          icon="clipboard"
-          label={`Paste from clipboard (${MOD}+V)`}
-          size={phone ? 48 : 40}
-          onClick={() => onCommand("paste-and-fetch")}
+    <form
+      className="flex items-center gap-2"
+      onSubmit={(e) => {
+        e.preventDefault();
+        fetchNow();
+      }}
+    >
+      <label className="relative flex-1">
+        <Icon name="link" size={18} className="absolute top-1/2 left-3 -translate-y-1/2 text-fg-3" />
+        <input
+          ref={inputRef}
+          value={input}
+          onChange={(e) => setHome({ input: e.target.value, error: null })}
+          onKeyDown={(e) => {
+            if (e.key === "Escape" && home.get().loading) {
+              e.preventDefault();
+              cancelFetch();
+            }
+          }}
+          placeholder="Paste a video, playlist or audio link"
+          aria-label="Link"
+          spellCheck={false}
+          autoComplete="off"
+          className={`w-full rounded-md border border-line bg-inset pr-10 pl-10 text-[13px] text-fg shadow-[inset_0_1px_0_rgba(255,255,255,0.03)] transition-[border-color,box-shadow] duration-200 placeholder:text-fg-3 hover:border-line-strong focus:border-accent-border focus:shadow-[0_0_0_3px_var(--accent-soft)] ${phone ? "h-12" : "h-10"}`}
         />
-        <Button
-          type="submit"
-          variant="primary"
-          size={phone ? "lg" : "md"}
-          className={phone ? "" : "h-10"}
-          loading={loading}
-          disabled={!input.trim() && !loading}
-          title="Fetch (Enter)"
-        >
-          {loading ? "Fetching" : "Fetch"}
-        </Button>
-      </form>
+        {input && (
+          <IconButton
+            icon="x"
+            label="Clear"
+            size={phone ? 40 : 28}
+            className="absolute top-1/2 right-1.5 -translate-y-1/2"
+            onClick={() => {
+              setHome({ input: "", error: null });
+              inputRef.current?.focus();
+            }}
+          />
+        )}
+      </label>
+      <IconButton
+        icon="clipboard"
+        label={`Paste from clipboard (${MOD}+V)`}
+        size={phone ? 48 : 40}
+        onClick={() => onCommand("paste-and-fetch")}
+      />
+      <Button
+        type="submit"
+        variant="primary"
+        size={phone ? "lg" : "md"}
+        className={phone ? "" : "h-10"}
+        loading={loading}
+        disabled={!input.trim() && !loading}
+        title="Fetch (Enter)"
+      >
+        {loading ? "Fetching" : "Fetch"}
+      </Button>
+    </form>
   );
 
   const notices = (
-      <AnimatePresence initial={false}>
-        {clipLink && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={t.fast}
-            className="flex items-center gap-2 text-[12px]"
-          >
-            <span className="rounded-full bg-accent-soft px-3 py-1 text-accent">Link found: {hostOf(clipLink)}</span>
+    <AnimatePresence initial={false}>
+      {clipLink && (
+        <motion.div
+          key="clip"
+          initial={{ opacity: 0, y: -8, scale: 0.94 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          exit={{ opacity: 0, y: -4, scale: 0.97 }}
+          transition={t.spring}
+          className="max-w-full self-start"
+        >
+          {/* Sticky note: tinted, tilted slightly, one tapered corner. */}
+          <div className="sticky-note flex max-w-full items-center gap-2 py-1.5 pr-1.5 pl-3 text-[12px]">
+            <Icon name="link" size={14} className="shrink-0 text-accent" />
+            <span className="min-w-0 truncate font-medium">Link found: {hostOf(clipLink)}</span>
             <Button
               size="sm"
-              variant="ghost"
+              variant="primary"
               onClick={() => {
                 const v = clipLink;
                 setClipLink(null);
@@ -257,38 +270,25 @@ export function HomePage({ phone }: { phone: boolean }) {
               Use link
             </Button>
             <IconButton icon="x" label="Dismiss" size={28} onClick={() => setClipLink(null)} />
-          </motion.div>
-        )}
-        {added && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={t.fast}
-            className="flex items-center gap-2 text-[12px] text-success"
-            role="status"
-          >
-            <Icon name="check" size={16} />
-            Added to downloads
-            <button type="button" className="font-medium text-accent hover:underline" onClick={() => navigate("downloads")}>
-              View
-            </button>
-          </motion.div>
-        )}
-      </AnimatePresence>
+          </div>
+        </motion.div>
+      )}
+    </AnimatePresence>
   );
 
   const errorBlock = err && (
     <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      transition={t.fast}
+      initial={reduced ? { opacity: 0 } : { opacity: 0, y: -6 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={t.spring}
       role="alert"
-      className="rounded-md border border-danger/40 bg-danger/10 p-3"
+      className="rounded-[14px_14px_14px_4px] border border-danger/40 bg-danger/10 p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]"
     >
       <div className="flex items-start gap-2">
-        <Icon name="alert" size={18} className="mt-0.5 shrink-0 text-danger" />
-        <div className="min-w-0 flex-1">
+        <span className="grid size-8 shrink-0 place-items-center rounded-full bg-danger/16 text-danger">
+          <Icon name="alert" size={17} />
+        </span>
+        <div className="min-w-0 flex-1 pt-0.5">
           <div className="font-semibold">
             {error?.code === "empty_url" ? "Paste a link first." : "Couldn't read this link"}
           </div>
@@ -323,6 +323,18 @@ export function HomePage({ phone }: { phone: boolean }) {
         <IconButton icon="x" label="Dismiss" size={28} onClick={() => setHome({ error: null })} />
       </div>
     </motion.div>
+  );
+
+  const fetchModal = (
+    <ActionModal
+      open={loading || ready}
+      phase={loading ? "working" : "success"}
+      title={loading ? "Reading your link" : "Found it"}
+      messages={FETCH_MESSAGES}
+      detail={loading ? hostOf(input) || undefined : info?.title}
+      successLabel="Pick a format to continue"
+      onCancel={cancelFetch}
+    />
   );
 
   const statTiles = [
@@ -365,6 +377,7 @@ export function HomePage({ phone }: { phone: boolean }) {
             <FormatPicker info={info} formats={formats} disabled={loading} onDownload={onDownload} fill />
           </div>
         </Sheet>
+        {fetchModal}
       </div>
     );
   }
@@ -378,7 +391,6 @@ export function HomePage({ phone }: { phone: boolean }) {
       {notices}
       {errorBlock}
       <div ref={gridRef} className="bento">
-
         {showEmpty ? (
           <Card span={SPANS.empty} narrow={narrow}>
             <PreviewCard info={null} loading={false} />
@@ -432,13 +444,18 @@ export function HomePage({ phone }: { phone: boolean }) {
         <RecentCard recent={recent} reduced={reduced} span={SPANS.recent} narrow={narrow} />
         <SaveFolderCard saveDir={saveDir} platform={platform} span={SPANS.folder} narrow={narrow} />
       </div>
+      {fetchModal}
     </div>
   );
 }
 
 function Link({ onClick, children }: { onClick: () => void; children: string }) {
   return (
-    <button type="button" onClick={onClick} className="text-[12px] font-medium text-accent hover:underline">
+    <button
+      type="button"
+      onClick={onClick}
+      className="rounded-sm text-[12px] font-medium text-accent transition-[opacity,transform] duration-150 hover:underline active:scale-[0.97]"
+    >
       {children}
     </button>
   );
@@ -493,7 +510,7 @@ function RecentCard({
                 key={r.id}
                 layout={!reduced}
                 {...listItem(reduced, i)}
-                className="flex h-11 shrink-0 items-center gap-3"
+                className="flex h-11 shrink-0 items-center gap-3 rounded-md px-1 transition-colors duration-150 hover:bg-card-hover"
               >
                 <Thumb src={r.thumbnailUrl} className="h-8 w-12 shrink-0 rounded-sm" icon={r.mode === "audio" ? "audio" : "video"} />
                 <span className="min-w-0 flex-1 truncate text-[13px]">{r.title}</span>
@@ -527,7 +544,9 @@ function SaveFolderCard({
   return (
     <Card span={span} narrow={narrow} title={oneRow ? undefined : "Save folder"} bodyClassName="justify-center">
       <div className="flex items-center gap-3">
-        <Icon name="folder" size={20} className="shrink-0 text-accent" />
+        <span className="grid size-9 shrink-0 place-items-center rounded-[12px_12px_12px_4px] bg-accent-soft text-accent">
+          <Icon name="folder" size={18} />
+        </span>
         <span className="selectable min-w-0 flex-1 truncate font-mono text-[12px] text-fg-2" title={saveDir || "System Downloads folder"}>
           {saveDir || (platform === "android" ? "App files folder" : "System Downloads folder")}
         </span>
@@ -544,4 +563,3 @@ function SaveFolderCard({
     </Card>
   );
 }
-

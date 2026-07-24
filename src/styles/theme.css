@@ -142,19 +142,67 @@ textarea,
   font-variant-numeric: tabular-nums;
 }
 
-/* Card hover brightening runs as a CSS transition, never per frame. */
+/*
+ * Surfaces. Corners are deliberately uneven (the bottom-left corner is tighter),
+ * like a torn-edge note rather than a template tile. Hover work is CSS-only.
+ */
 .card {
+  position: relative;
+  isolation: isolate;
   background: var(--bg-card);
   border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
+  border-radius: 20px 20px 20px 12px;
   box-shadow: var(--shadow-card);
   transition:
-    border-color 180ms,
-    box-shadow 180ms;
+    border-color 240ms,
+    box-shadow 280ms,
+    background-color 240ms;
+}
+/* Layered rim: a faint top light that becomes an accent wash on hover. */
+.card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  pointer-events: none;
+  background: linear-gradient(170deg, rgba(255, 255, 255, 0.09), rgba(255, 255, 255, 0) 42%);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  opacity: 0.8;
+  transition: opacity 280ms;
 }
 .card-interactive:hover {
   border-color: var(--border-strong);
-  box-shadow: var(--shadow-lift);
+  box-shadow:
+    var(--shadow-lift),
+    0 0 0 1px transparent,
+    0 22px 44px -22px var(--accent-soft);
+}
+.card-interactive:hover::before {
+  opacity: 1;
+  background: linear-gradient(170deg, var(--accent-border), transparent 55%);
+}
+
+/* Sticky note: a short tinted callout with one tapered corner. */
+.sticky-note {
+  background: var(--bg-card-tint);
+  color: var(--text-primary);
+  border: 1px solid var(--accent-border);
+  border-radius: 6px 18px 18px 18px;
+  box-shadow: var(--shadow-card);
+  transform: rotate(-0.6deg);
+}
+
+/* Toast countdown bar, paused on hover via animation-play-state. */
+@keyframes toast-timer {
+  from {
+    transform: scaleX(1);
+  }
+  to {
+    transform: scaleX(0);
+  }
 }
 .card-tint {
   background: var(--bg-card-tint-strong);

@@ -63,17 +63,22 @@ export function Icon({
   );
 }
 
+/**
+ * Keepsake mark: a coral tile, a white bookmark and a download arrow ("saved", "download").
+ * Same geometry as public/logo.svg (the favicon) and the generated app icons.
+ */
 export function Logo({ size = 32 }: { size?: number }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 32 32" aria-hidden="true">
-      <rect width="32" height="32" rx="9" fill="var(--accent)" />
+    <svg width={size} height={size} viewBox="0 0 64 64" aria-hidden="true" className="shrink-0">
+      <rect width="64" height="64" rx="16" fill="var(--accent)" />
+      <path d="M21 13H43V50L32 42.5L21 50Z" fill="#ffffff" stroke="#ffffff" strokeWidth="4" strokeLinejoin="round" />
       <path
-        d="M16 8v11m0 0-4.5-4.5M16 19l4.5-4.5M10 23.5h12"
-        stroke="var(--accent-fg)"
-        strokeWidth="2.4"
+        d="M32 22v13m-5.5-5.5L32 35l5.5-5.5"
+        fill="none"
+        stroke="var(--accent)"
+        strokeWidth="3.6"
         strokeLinecap="round"
         strokeLinejoin="round"
-        fill="none"
       />
     </svg>
   );

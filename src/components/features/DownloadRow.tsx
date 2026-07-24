@@ -110,7 +110,7 @@ export function DownloadRow({
           cancelJob(job.id);
         }
       }}
-      className={`group flex items-center gap-3 rounded-md outline-offset-[-2px] ${compact ? "h-14" : "h-[72px]"}`}
+      className={`group flex items-center gap-3 rounded-lg px-1.5 outline-offset-[-2px] transition-[background-color,transform] duration-200 hover:bg-card-hover active:scale-[0.98] ${compact ? "h-14" : "h-[72px]"}`}
     >
       <Thumb
         src={job.thumbnailUrl}

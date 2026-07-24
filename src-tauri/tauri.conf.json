@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Fetchly",
+  "productName": "Keepsake",
   "version": "2.1.0",
-  "identifier": "com.fetchly.app",
+  "identifier": "com.keepsake.app",
   "build": {
     "beforeDevCommand": "bun run dev:web",
     "devUrl": "http://localhost:1420",
@@ -14,7 +14,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "Fetchly",
+        "title": "Keepsake",
         "width": 1200,
         "height": 780,
         "minWidth": 960,

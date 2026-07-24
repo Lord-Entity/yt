@@ -1,4 +1,4 @@
-# Fetchly for Android (APK)
+# Keepsake for Android (APK)
 
 This guide is for people who do **not** want to install the Android toolchain on their own machine. Path 1 builds the APK on GitHub's servers. Path 2 is the local build, in case you change your mind.
 
@@ -10,9 +10,9 @@ This guide is for people who do **not** want to install the Android toolchain on
   
   Higher resolutions need separate video and audio streams merged with ffmpeg. That only happens in the desktop app. Links from other sites are rejected on Android.
 - **Playlists are not supported on Android.** A playlist link shows an error. Use the Windows or Linux app for playlists.
-- **Saved files go to the app's private folder** (`/storage/emulated/0/Android/data/com.fetchly.app/files/Download`).
-  - Android **deletes these files when you uninstall Fetchly**. Copy anything you want to keep somewhere else first.
-  - Many file managers hide this folder. Open files from Fetchly's Library, or use a file manager that shows `Android/data`.
+- **Saved files go to the app's private folder** (`/storage/emulated/0/Android/data/com.keepsake.app/files/Download`).
+  - Android **deletes these files when you uninstall Keepsake**. Copy anything you want to keep somewhere else first.
+  - Many file managers hide this folder. Open files from Keepsake's Library, or use a file manager that shows `Android/data`.
 - **A custom save folder must be picked again after every restart.** Folder access from the picker lasts for one session only.
 
 ## Path 1: build the APK with GitHub Actions (nothing to install)
@@ -22,7 +22,7 @@ The workflow `.github/workflows/build.yml` has an `android` job. It runs on GitH
 1. Installs JDK 17, the Android SDK (`android-actions/setup-android`), NDK 27.2.12479018 and the four Rust Android targets (`aarch64-linux-android armv7-linux-androideabi i686-linux-android x86_64-linux-android`).
 2. Runs `bun install` and `bun run android:init --ci` (`tauri android init`).
 3. Runs `bun run build:android --debug --ci`, which is `tauri android build --apk --debug`: a universal debug APK for all four ABIs.
-4. Uploads it as a workflow artifact named **`fetchly-android-apk`**.
+4. Uploads it as a workflow artifact named **`keepsake-android-apk`**.
 
 It does not download yt-dlp or ffmpeg: `tauri.android.conf.json` sets `"externalBin": []`, so the Android app ships no sidecars. The same workflow's `windows` and `linux` jobs build the desktop installers (see README.md).
 
@@ -30,19 +30,19 @@ What you need: a GitHub account and Git. You push the code yourself, because the
 
 ### Steps
 
-1. Create an empty repository on GitHub (private is fine), for example `fetchly`.
+1. Create an empty repository on GitHub (private is fine), for example `keepsake`.
 2. Push the project. The workflow assumes the `fetchly` folder is the repository root:
    ```bash
    cd "C:/Users/Bazil Suhail/Documents/YT-VideoDowloader/fetchly"
    git add .
-   git commit -m "Fetchly"
+   git commit -m "Keepsake"
    git branch -M main
    git remote add origin https://github.com/<your-user>/fetchly.git
    git push -u origin main
    ```
-   If your repository root is the parent folder instead, move `fetchly/.github` to the repository root and set `FETCHLY_DIR: fetchly` near the top of `build.yml`.
+   If your repository root is the parent folder instead, move `fetchly/.github` to the repository root and set `KEEPSAKE_DIR: fetchly` near the top of `build.yml`.
 3. On GitHub, open the **Actions** tab. A push to `main` starts the `build` workflow. To start it by hand, choose **build**, then **Run workflow**.
-4. When the `android` job finishes (about 15-25 minutes on the first run), open the run, scroll to **Artifacts**, and download **`fetchly-android-apk`**. It is a zip with the APK files inside.
+4. When the `android` job finishes (about 15-25 minutes on the first run), open the run, scroll to **Artifacts**, and download **`keepsake-android-apk`**. It is a zip with the APK files inside.
 5. Unzip it and copy the `.apk` to your phone. The CI build is one universal APK with code for all four ABIs (arm64 and 32-bit ARM phones, x86 and x86_64 emulators). Open it on the phone, and allow "Install unknown apps" for your file manager or browser when Android asks.
 
 Notes:

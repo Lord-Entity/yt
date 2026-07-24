@@ -6,6 +6,7 @@ import { Splash } from "./components/layout/Splash";
 import { TabBar } from "./components/layout/TabBar";
 import { Titlebar } from "./components/layout/Titlebar";
 import { Button } from "./components/ui/Button";
+import { Toasts } from "./components/ui/Toasts";
 import { DownloadsPage } from "./pages/Downloads";
 import { HomePage } from "./pages/Home";
 import { LibraryPage } from "./pages/Library";
@@ -72,8 +73,8 @@ function Root() {
               ? {
                   ...b,
                   error: {
-                    title: "Fetchly can't start downloads",
-                    body: "yt-dlp is missing or damaged. Reinstall Fetchly.",
+                    title: "Keepsake can't start downloads",
+                    body: "yt-dlp is missing or damaged. Reinstall Keepsake.",
                   },
                 }
               : b,
@@ -126,6 +127,7 @@ function Root() {
           <Shell />
         </motion.div>
       )}
+      {ready && <Toasts />}
     </>
   );
 }

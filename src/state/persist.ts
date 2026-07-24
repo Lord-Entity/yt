@@ -6,7 +6,7 @@
 import type { LibraryItem } from "./models";
 import type { Settings } from "./settings";
 
-const KEY = "fetchly.settings.v1";
+const KEY = "keepsake.settings.v1";
 
 export async function loadSettings(): Promise<Partial<Settings> | null> {
   try {
@@ -27,7 +27,7 @@ export async function saveSettings(settings: Settings): Promise<void> {
   }
 }
 
-const LIBRARY_KEY = "fetchly.library.v1";
+const LIBRARY_KEY = "keepsake.library.v1";
 
 /** Library history. Same swap rule as settings: replace these two for Tauri/SQLite storage. */
 export async function loadLibrary(): Promise<LibraryItem[]> {
@@ -51,7 +51,7 @@ export async function saveLibrary(items: LibraryItem[]): Promise<void> {
 /** Small per-device UI conveniences (library view mode etc). Never throws. */
 export function loadUiPref<T>(key: string, fallback: T): T {
   try {
-    const raw = localStorage.getItem(`fetchly.ui.${key}`);
+    const raw = localStorage.getItem(`keepsake.ui.${key}`);
     return raw === null ? fallback : (JSON.parse(raw) as T);
   } catch {
     return fallback;
@@ -60,7 +60,7 @@ export function loadUiPref<T>(key: string, fallback: T): T {
 
 export function saveUiPref<T>(key: string, value: T): void {
   try {
-    localStorage.setItem(`fetchly.ui.${key}`, JSON.stringify(value));
+    localStorage.setItem(`keepsake.ui.${key}`, JSON.stringify(value));
   } catch {
     // ignore
   }

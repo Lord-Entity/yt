@@ -1,6 +1,6 @@
-# Building Fetchly
+# Building Keepsake
 
-Fetchly is a Tauri v2 app. All extraction, download and conversion logic is TypeScript in `src/engine`. The Rust code in `src-tauri` only registers plugins, shows the window, and launches the bundled yt-dlp on desktop.
+Keepsake is a Tauri v2 app. All extraction, download and conversion logic is TypeScript in `src/engine`. The Rust code in `src-tauri` only registers plugins, shows the window, and launches the bundled yt-dlp on desktop.
 
 | Target  | Output                    | Download path                                       |
 |---------|---------------------------|-----------------------------------------------------|
@@ -143,7 +143,7 @@ The scripts map to `tauri android init`, `tauri android dev` and `tauri android 
 
 **After `android init`:**
 
-- **Where files go on Android.** Tauri's `PathPlugin.kt` resolves `$DOWNLOAD`, `$VIDEO` and `$AUDIO` with `getExternalFilesDir(...)`. That gives `/storage/emulated/0/Android/data/com.fetchly.app/files/Download`, which is app-specific.
+- **Where files go on Android.** Tauri's `PathPlugin.kt` resolves `$DOWNLOAD`, `$VIDEO` and `$AUDIO` with `getExternalFilesDir(...)`. That gives `/storage/emulated/0/Android/data/com.keepsake.app/files/Download`, which is app-specific.
   - The app can write there with no storage permission.
   - Android deletes the files when the app is uninstalled.
   - Many file managers hide that folder.
@@ -186,11 +186,11 @@ Rules enforced in Rust:
 - **URL.** `--` may appear once and must be followed by exactly one `http://` or `https://` URL with a host.
 - **Fixed prefix.** Rust always adds `--ignore-config --no-plugin-dirs --no-js-runtimes --js-runtimes node --ffmpeg-location <app folder>` before the engine's arguments. It sets `PYTHONIOENCODING=utf-8` and `PYTHONUNBUFFERED=1`. On Windows the process starts with `CREATE_NO_WINDOW`; on Unix it starts in its own process group.
 - **Cancel.** Cancel kills the whole tree, so ffmpeg children are killed too: `taskkill /T /F` on Windows, `kill -KILL -<pgid>` on Unix. Every running tree is also killed on app exit.
-- **Temp folder.** `tempDir`, if given, must be an absolute path ending in `.fetchly-tmp/<jobId>` with no `..` in it. Rust creates the folder and writes a `.fetchly-job` marker file before spawning. It deletes the folder, with retries, only after the process has exited. Nothing else in the output folder is touched.
+- **Temp folder.** `tempDir`, if given, must be an absolute path ending in `.keepsake-tmp/<jobId>` with no `..` in it. Rust creates the folder and writes a `.keepsake-job` marker file before spawning. It deletes the folder, with retries, only after the process has exited. Nothing else in the output folder is touched.
 - **Differences from `src/engine/CONTRACT.md`.**
   - `binary_status` also returns `node`.
   - Unix cancel sends SIGKILL straight away, not SIGTERM and then SIGKILL after 2 s.
-  - Windows uses `taskkill /T` instead of a Job Object. A hard crash of Fetchly itself can therefore leave yt-dlp running.
+  - Windows uses `taskkill /T` instead of a Job Object. A hard crash of Keepsake itself can therefore leave yt-dlp running.
 - **Android.** On Android `run_ytdlp` returns an error, and `binary_status` returns all `null`.
 
 App commands are allowed for the `main` window by default. There is no `AppManifest` restriction in `build.rs`.
@@ -230,7 +230,7 @@ A folder picked with `dialog.open()` is added to the fs scope for the current se
 
 **Dialog and opener.** `dialog:allow-open` and `opener:default`. The latter covers open-url for http, https and mailto, plus reveal-item-in-dir. `opener:allow-open-path` is scoped to the bare `$DOWNLOAD` folder itself plus `$DOWNLOAD/**`, `$VIDEO/**` and `$AUDIO/**`. The bare `$DOWNLOAD` entry lets "Open folder" open the default download folder, not only files inside it.
 
-The home folder (`$HOME`, `$HOME/**`) is deliberately **not** in the open-path scope. `open-path` hands a path to the operating system's default handler. On the home folder that would let the webview launch any script, shortcut or executable in the user's profile (for example `.desktop` files on Linux or `.lnk`/`.bat` on Windows). The download folders hold only files Fetchly wrote. Files saved to a custom folder outside these roots can still be shown with reveal-item-in-dir.
+The home folder (`$HOME`, `$HOME/**`) is deliberately **not** in the open-path scope. `open-path` hands a path to the operating system's default handler. On the home folder that would let the webview launch any script, shortcut or executable in the user's profile (for example `.desktop` files on Linux or `.lnk`/`.bat` on Windows). The download folders hold only files Keepsake wrote. Files saved to a custom folder outside these roots can still be shown with reveal-item-in-dir.
 
 ## 6. Window, splash and titlebar (`tauri.conf.json`)
 
@@ -257,7 +257,7 @@ The home folder (`$HOME`, `$HOME/**`) is deliberately **not** in the open-path s
   - targets `nsis` and `msi`
   - `webviewInstallMode` set to `downloadBootstrapper`, silent (the documented default)
   - NSIS `installMode: currentUser`, so no admin rights are needed
-- `tauri.linux.conf.json`: targets `deb`, `rpm` and `appimage`, with `appimage.bundleMediaFramework: false`. Fetchly plays no media, and `true` adds about 15-35 MB. It also repeats the full `main` window entry with `decorations: true`. Platform config files are merged as a JSON Merge Patch (RFC 7396), which replaces arrays whole, so the window entry must be complete.
+- `tauri.linux.conf.json`: targets `deb`, `rpm` and `appimage`, with `appimage.bundleMediaFramework: false`. Keepsake plays no media, and `true` adds about 15-35 MB. It also repeats the full `main` window entry with `decorations: true`. Platform config files are merged as a JSON Merge Patch (RFC 7396), which replaces arrays whole, so the window entry must be complete.
 - **Known (INFERRED):** `.deb` and `.rpm` install sidecars next to the main binary in `/usr/bin`. A system `yt-dlp` package would clash with that. The AppImage is self-contained.
 
 ## 8. CI (`.github/workflows/build.yml`)
@@ -266,13 +266,13 @@ Runs on push to `main`, on `v*` tags, on pull requests and by hand (`workflow_di
 
 | Job | Runner | Steps | Artifacts |
 |---|---|---|---|
-| `windows` | `windows-latest` | Rust stable (MSVC, checked with `rustc -vV`), Bun 1.4.4, `scripts/fetch-binaries.ps1`, `bun install`, `bun run build:windows` | `fetchly-windows-nsis`, `fetchly-windows-msi` |
-| `linux` | `ubuntu-22.04` | apt: `libwebkit2gtk-4.1-dev libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev patchelf` (+ build-essential, file), Rust stable, Bun, `scripts/fetch-binaries.sh`, `bun install`, `bun run build:linux` | `fetchly-linux-deb`, `fetchly-linux-rpm`, `fetchly-linux-appimage` |
-| `android` | `ubuntu-latest` | Temurin JDK 17, `android-actions/setup-android` + NDK 27.2.12479018, the four Rust Android targets, Bun, `bun install`, `bun run android:init --ci`, `bun run build:android --debug --ci` | `fetchly-android-apk` |
+| `windows` | `windows-latest` | Rust stable (MSVC, checked with `rustc -vV`), Bun 1.4.4, `scripts/fetch-binaries.ps1`, `bun install`, `bun run build:windows` | `keepsake-windows-nsis`, `keepsake-windows-msi` |
+| `linux` | `ubuntu-22.04` | apt: `libwebkit2gtk-4.1-dev libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev patchelf` (+ build-essential, file), Rust stable, Bun, `scripts/fetch-binaries.sh`, `bun install`, `bun run build:linux` | `keepsake-linux-deb`, `keepsake-linux-rpm`, `keepsake-linux-appimage` |
+| `android` | `ubuntu-latest` | Temurin JDK 17, `android-actions/setup-android` + NDK 27.2.12479018, the four Rust Android targets, Bun, `bun install`, `bun run android:init --ci`, `bun run build:android --debug --ci` | `keepsake-android-apk` |
 
 The Android job does not run the fetch scripts: `tauri.android.conf.json` sets `"externalBin": []`. `tsc --noEmit` still runs in CI, as part of `beforeBuildCommand` (`bun run build`). `oxlint` and `cargo test` are not run in CI; run them locally.
 
-The workflow assumes `fetchly/` is the repo root. Otherwise move it to `<repo>/.github/workflows/` and set `FETCHLY_DIR: fetchly`.
+The workflow assumes `fetchly/` is the repo root. Otherwise move it to `<repo>/.github/workflows/` and set `KEEPSAKE_DIR: fetchly`.
 
 ## 9. Verification status
 

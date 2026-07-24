@@ -1,7 +1,7 @@
 /**
  * Port of yt-python/workers/errors.py (`clean_error`, `friendly_error`), same match order.
  * Rewordings (UI_CONTENT.md section 6): COOKIE_HINT -> "Settings > Cookies"; the ffmpeg text drops
- * "place ffmpeg.exe next to the application" and says "Reinstall Fetchly".
+ * "place ffmpeg.exe next to the application" and says "Reinstall Keepsake".
  */
 import { ERROR_TEXT, type AppError, type AppErrorCode } from "../lib/types";
 

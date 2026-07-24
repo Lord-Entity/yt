@@ -30,7 +30,7 @@ type YtdlpEvent = { event: "stdout"; line: string } | { event: "stderr"; line: s
 - Send every stdout/stderr line (no trailing newline, UTF-8, lossy decode) on `onEvent` as it arrives.
 - Resolve with the exit code when the process exits (after both pipes are drained). Reject only if spawning fails; include "yt-dlp" and "not found" in the message when the binary is missing.
 - Validation Rust should do (the webview builds the args): the last two args are `--` and an `http(s)://` URL; reject `--exec`, `--exec-before-download`, `--config-location(s)`, `--batch-file`/`-a`, `--load-info-json`, `--netrc-cmd`, `--external-downloader`/`--downloader`, `--downloader-args`, `--postprocessor-args`/`--ppa`, `--plugin-dirs`, `--use-postprocessor`.
-- `tempDir` (download jobs only) is `<outDir>/.fetchly-tmp/<jobId>`: create it with a `.fetchly-job` marker before spawning, and delete it after exit (success, failure or cancel). Never touch anything else in `outDir`.
+- `tempDir` (download jobs only) is `<outDir>/.keepsake-tmp/<jobId>`: create it with a `.keepsake-job` marker before spawning, and delete it after exit (success, failure or cancel). Never touch anything else in `outDir`.
 - `jobId` is a UUID (downloads) or `info-<UUID>` (fetchInfo).
 
 ### `cancel_ytdlp`
@@ -50,10 +50,10 @@ Version strings from `yt-dlp --version` and the first line of `ffmpeg -version`,
 Every call: `--encoding utf-8 --no-warnings [--cookies-from-browser <b>]`. Rust prepends `--ignore-config --no-plugin-dirs --no-js-runtimes --js-runtimes node --ffmpeg-location <dir>`, so TS does not repeat them.
 
 - Info: `... -J -i --flat-playlist -- <url>`. JSON is the first stdout line starting with `{`.
-- Download (all modes): `--windows-filenames --trim-filenames <60..200> -P home:<outDir> -P temp:<tempDir> --newline --progress --progress-template "download:FETCHLY|status|downloaded|total|estimate|speed|eta|playlist_index|n_entries|filename" --progress-template "postprocess:FETCHLY_PP|status|postprocessor" --print "after_move:FETCHLY_DONE|%(filepath)s" -i`
+- Download (all modes): `--windows-filenames --trim-filenames <60..200> -P home:<outDir> -P temp:<tempDir> --newline --progress --progress-template "download:KEEPSAKE|status|downloaded|total|estimate|speed|eta|playlist_index|n_entries|filename" --progress-template "postprocess:KEEPSAKE_PP|status|postprocessor" --print "after_move:KEEPSAKE_DONE|%(filepath)s" -i`
   - Video: `-o "%(title)s.%(ext)s" -f "bestvideo[height<=N]+bestaudio/best[height<=N]/best" [-S res,fps,vcodec:h264,acodec:aac] --merge-output-format mp4/mkv [--embed-thumbnail --convert-thumbnails jpg] --embed-metadata`. Picked video-only stream: `-f "<id>+bestaudio[ext=m4a]/<id>+bestaudio"`.
   - Audio: `-o "%(title)s.%(ext)s" -f bestaudio/best -x --audio-format <fmt> [--audio-quality <kbps>K] [--embed-thumbnail --convert-thumbnails jpg (mp3/m4a only)] --embed-metadata`.
-  - Thumbnail: `--skip-download --write-thumbnail -o "thumbnail:%(title)s_thumb.%(ext)s" [--convert-thumbnails png|jpg] --print "after_video:FETCHLY_DONE|%(thumbnails.-1.filepath)s"`.
+  - Thumbnail: `--skip-download --write-thumbnail -o "thumbnail:%(title)s_thumb.%(ext)s" [--convert-thumbnails png|jpg] --print "after_video:KEEPSAKE_DONE|%(thumbnails.-1.filepath)s"`.
 - Last: `-- <url>`.
 
 ## 4. Config the PLATFORM agent must add

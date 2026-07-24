@@ -43,7 +43,7 @@ pub fn run() {
             ytdlp::binary_status
         ])
         .build(tauri::generate_context!())
-        .expect("error while building Fetchly")
+        .expect("error while building Keepsake")
         .run(|app, event| {
             // Kill running yt-dlp trees when the app exits.
             if let tauri::RunEvent::Exit = event {
