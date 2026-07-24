@@ -11,6 +11,8 @@
 //!   onEvent messages: { event: "stdout" | "stderr", line: string }
 //!   invoke<void>("cancel_ytdlp", { jobId })
 //!   invoke<{ ytdlp: string | null, ffmpeg: string | null, node: string | null }>("binary_status")
+//!   invoke<string[]>("list_installed_browsers")  // yt-dlp browser names with a profile folder
+//!   run_ytdlp rejects with "js_runtime_missing: ..." for a YouTube URL when no Node.js is found.
 #![cfg_attr(mobile, allow(dead_code, unused))]
 
 use serde::Serialize;
@@ -164,8 +166,8 @@ fn validate_args(args: &[String]) -> Result<(), String> {
             let Some(v) = args.get(i + 1) else {
                 return Err(format!("yt-dlp flag {a} needs a value"));
             };
-            if a == "--js-runtimes" && v != "node" {
-                return Err("only --js-runtimes node is allowed".into());
+            if a == "--js-runtimes" && !js_runtime_ok(v.as_str()) {
+                return Err("only --js-runtimes node or node:<absolute path> is allowed".into());
             }
             i += 2;
         } else {
@@ -173,6 +175,104 @@ fn validate_args(args: &[String]) -> Result<(), String> {
         }
     }
     Ok(())
+}
+
+/// `--js-runtimes` value: `node` or `node:<absolute path>` (yt-dlp `RUNTIME[:PATH]`).
+fn js_runtime_ok(v: &str) -> bool {
+    v == "node"
+        || v
+            .strip_prefix("node:")
+            .is_some_and(|p| !p.is_empty() && Path::new(p).is_absolute())
+}
+
+/// Error text the TS engine maps to code `js_runtime_missing` (src/engine/ytdlp.ts).
+const JS_RUNTIME_MISSING: &str =
+    "js_runtime_missing: Node.js was not found. Install Node.js (https://nodejs.org) so YouTube downloads work.";
+
+/// True when the URL after `--` is a YouTube host (yt-dlp needs a JS runtime for its challenges).
+fn is_youtube_job(args: &[String]) -> bool {
+    let Some(i) = args.iter().position(|a| a == "--") else {
+        return false;
+    };
+    let Some(u) = args.get(i + 1).and_then(|u| tauri::Url::parse(u).ok()) else {
+        return false;
+    };
+    let host = u.host_str().unwrap_or("").to_ascii_lowercase();
+    ["youtube.com", "youtu.be", "youtube-nocookie.com"]
+        .iter()
+        .any(|d| host == *d || host.ends_with(&format!(".{d}")))
+}
+
+/// Find a Node.js binary: PATH first, then common install folders (a GUI app may
+/// have a stale PATH right after Node was installed).
+fn find_node() -> Option<PathBuf> {
+    let name = exe_name("node");
+    if let Some(paths) = std::env::var_os("PATH") {
+        for dir in std::env::split_paths(&paths) {
+            let p = dir.join(&name);
+            if p.is_absolute() && p.is_file() {
+                return Some(p);
+            }
+        }
+    }
+    let mut extra: Vec<PathBuf> = Vec::new();
+    #[cfg(windows)]
+    {
+        if let Some(pf) = std::env::var_os("ProgramFiles") {
+            extra.push(PathBuf::from(pf).join("nodejs").join(&name));
+        }
+        extra.push(PathBuf::from(r"C:\Program Files\nodejs").join(&name));
+        if let Some(la) = std::env::var_os("LOCALAPPDATA") {
+            extra.push(PathBuf::from(la).join("Programs").join("nodejs").join(&name));
+        }
+        // nvm-windows keeps the active version behind this symlink.
+        if let Some(s) = std::env::var_os("NVM_SYMLINK") {
+            extra.push(PathBuf::from(s).join(&name));
+        }
+    }
+    #[cfg(unix)]
+    {
+        extra.push(PathBuf::from("/usr/local/bin/node"));
+        extra.push(PathBuf::from("/usr/bin/node"));
+    }
+    extra.into_iter().find(|p| p.is_file())
+}
+
+/// Browser profile folders, in no particular order (TS owns the retry order).
+/// Names are yt-dlp `--cookies-from-browser` names.
+fn browser_profile_dirs() -> Vec<(&'static str, PathBuf)> {
+    let env = |k: &str| std::env::var_os(k).map(PathBuf::from);
+    #[cfg(windows)]
+    let (local, roaming) = (env("LOCALAPPDATA"), env("APPDATA"));
+    #[cfg(windows)]
+    let table: [(&'static str, &Option<PathBuf>, &str); 7] = [
+        ("edge", &local, r"Microsoft\Edge\User Data"),
+        ("chrome", &local, r"Google\Chrome\User Data"),
+        ("firefox", &roaming, r"Mozilla\Firefox\Profiles"),
+        ("brave", &local, r"BraveSoftware\Brave-Browser\User Data"),
+        ("chromium", &local, r"Chromium\User Data"),
+        ("opera", &roaming, r"Opera Software\Opera Stable"),
+        ("vivaldi", &local, r"Vivaldi\User Data"),
+    ];
+    #[cfg(not(windows))]
+    let home = env("HOME");
+    #[cfg(not(windows))]
+    let config = env("XDG_CONFIG_HOME").or_else(|| home.as_ref().map(|h| h.join(".config")));
+    #[cfg(not(windows))]
+    let table: [(&'static str, &Option<PathBuf>, &str); 8] = [
+        ("edge", &config, "microsoft-edge"),
+        ("chrome", &config, "google-chrome"),
+        ("firefox", &home, ".mozilla/firefox"),
+        ("firefox", &home, "snap/firefox/common/.mozilla/firefox"),
+        ("brave", &config, "BraveSoftware/Brave-Browser"),
+        ("chromium", &config, "chromium"),
+        ("opera", &config, "opera"),
+        ("vivaldi", &config, "vivaldi"),
+    ];
+    table
+        .iter()
+        .filter_map(|&(n, base, rel)| base.as_ref().map(|b| (n, b.join(rel))))
+        .collect()
 }
 
 /// Only `<anything>/.keepsake-tmp/<jobId>` may be deleted after a run.
@@ -287,14 +387,20 @@ fn run_blocking(
     }
 
     let mut cmd = quiet_command(&ytdlp);
-    cmd.args([
-        "--ignore-config",
-        "--no-plugin-dirs",
-        "--no-js-runtimes",
-        "--js-runtimes",
-        "node",
-        "--ffmpeg-location",
-    ])
+    cmd.args(["--ignore-config", "--no-plugin-dirs", "--no-js-runtimes"]);
+    // yt-dlp needs a JS runtime to solve YouTube's challenges; without one YouTube
+    // answers with "Sign in to confirm you're not a bot". Pass Node by absolute path
+    // so a stale GUI PATH does not matter. Other sites run without a runtime.
+    match find_node() {
+        Some(node) => {
+            let mut v = std::ffi::OsString::from("node:");
+            v.push(node.as_os_str());
+            cmd.arg("--js-runtimes").arg(v);
+        }
+        None if is_youtube_job(&args) => return Err(JS_RUNTIME_MISSING.into()),
+        None => {}
+    }
+    cmd.arg("--ffmpeg-location")
     .arg(&dir)
     .args(&args)
     .env("PYTHONIOENCODING", "utf-8")
@@ -432,8 +538,27 @@ pub async fn binary_status() -> Result<BinaryVersions, String> {
         BinaryVersions {
             ytdlp: first_line(&dir.join(exe_name("yt-dlp")), "--version"),
             ffmpeg: first_line(&dir.join(exe_name("ffmpeg")), "-version"),
-            node: first_line(Path::new("node"), "--version"),
+            node: find_node().and_then(|p| first_line(&p, "--version")),
         }
+    })
+    .await
+    .map_err(|e| e.to_string())
+}
+
+/// yt-dlp browser names whose profile folder exists (used for the cookie fallback).
+#[tauri::command]
+pub async fn list_installed_browsers() -> Result<Vec<String>, String> {
+    if cfg!(mobile) {
+        return Ok(Vec::new());
+    }
+    tauri::async_runtime::spawn_blocking(|| {
+        let mut found: Vec<String> = Vec::new();
+        for (name, dir) in browser_profile_dirs() {
+            if dir.is_dir() && !found.iter().any(|f| f.as_str() == name) {
+                found.push(name.to_string());
+            }
+        }
+        found
     })
     .await
     .map_err(|e| e.to_string())
@@ -482,11 +607,34 @@ mod tests {
         assert!(validate_args(&s(&["--exec", "calc"])).is_err());
         assert!(validate_args(&s(&["--ffmpeg-location", "/tmp"])).is_err());
         assert!(validate_args(&s(&["--js-runtimes", "deno"])).is_err());
+        assert!(validate_args(&s(&["--js-runtimes", "node:relative/node"])).is_err());
+        assert!(validate_args(&s(&["--js-runtimes", "node:"])).is_err());
+        assert!(validate_args(&s(&["--js-runtimes", "deno:/usr/bin/deno"])).is_err());
         assert!(validate_args(&s(&["https://x.y"])).is_err());
         assert!(validate_args(&s(&["-f"])).is_err());
         assert!(validate_args(&s(&["--", "file:///etc/passwd"])).is_err());
         assert!(validate_args(&s(&["--", "https://a.b", "https://c.d"])).is_err());
         assert!(validate_args(&s(&["--"])).is_err());
+    }
+
+    #[test]
+    fn js_runtime_values() {
+        let abs = if cfg!(windows) {
+            r"node:C:\Program Files\nodejs\node.exe"
+        } else {
+            "node:/usr/bin/node"
+        };
+        assert!(js_runtime_ok("node"));
+        assert!(js_runtime_ok(abs));
+        assert!(!js_runtime_ok("bun"));
+    }
+
+    #[test]
+    fn youtube_detection() {
+        assert!(is_youtube_job(&s(&["-J", "--", "https://www.youtube.com/watch?v=abc"])));
+        assert!(is_youtube_job(&s(&["--", "https://youtu.be/abc"])));
+        assert!(!is_youtube_job(&s(&["--", "https://vimeo.com/1"])));
+        assert!(!is_youtube_job(&s(&["--", "https://notyoutube.com/x"])));
     }
 
     #[test]

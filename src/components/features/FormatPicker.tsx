@@ -45,7 +45,7 @@ export function FormatPicker({
   disabled?: boolean;
   downloadDisabledReason?: string;
   onDownload: (choice: PickerChoice) => void;
-  /** Phone sheet: taller Download button pinned at the bottom. */
+  /** Phone modal: 48px rows and Download button, button pinned below the scroll area. */
   fill?: boolean;
 }) {
   const savedMode = useSettings((s) => s.lastMode);
@@ -127,7 +127,7 @@ export function FormatPicker({
           <p className="text-fg-2">Fetch a video first</p>
         ) : mode === "video" ? (
           <>
-            <Row label="Quality">
+            <Row fill={fill} label="Quality">
               <Select
                 label="Quality"
                 className="w-[200px] max-w-full"
@@ -140,7 +140,7 @@ export function FormatPicker({
                 }))}
               />
             </Row>
-            <Row label="Prefer H.264" title="Best compatibility. YouTube offers H.264 up to 1080p only">
+            <Row fill={fill} label="Prefer H.264" title="Best compatibility. YouTube offers H.264 up to 1080p only">
               <Switch
                 label="Prefer H.264"
                 checked={preferH264}
@@ -152,7 +152,7 @@ export function FormatPicker({
               <div>
                 <button
                   type="button"
-                  className="flex items-center gap-1 text-[12px] font-medium text-fg-2 hover:text-fg"
+                  className={`flex items-center gap-1 text-[12px] font-medium text-fg-2 hover:text-fg ${fill ? "min-h-12" : ""}`}
                   aria-expanded={advanced}
                   onClick={() => setAdvanced((a) => !a)}
                 >
@@ -175,7 +175,7 @@ export function FormatPicker({
                         selected={streamId}
                         onSelect={(id) => setStream({ key, id: id === streamId ? undefined : id })}
                       />
-                      <p className="mt-1 text-[11px] text-fg-2">
+                      <p className="mt-1 truncate text-[11px] text-fg-2">
                         Selected: {streamId ? streamId : "Automatic"}
                       </p>
                     </motion.div>
@@ -186,7 +186,7 @@ export function FormatPicker({
           </>
         ) : mode === "audio" ? (
           <>
-            <Row label="Format">
+            <Row fill={fill} label="Format">
               <Select
                 label="Audio format"
                 className="w-[200px] max-w-full"
@@ -196,7 +196,7 @@ export function FormatPicker({
               />
             </Row>
             {HAS_BITRATE.has(selected?.audioFormat ?? "") && (
-              <Row label="Bitrate">
+              <Row fill={fill} label="Bitrate">
                 <Select
                   label="Bitrate"
                   className="w-[200px] max-w-full"
@@ -208,7 +208,7 @@ export function FormatPicker({
             )}
           </>
         ) : (
-          <Row label="Save as">
+          <Row fill={fill} label="Save as">
             <Select
               label="Thumbnail format"
               className="w-[200px] max-w-full"
@@ -219,7 +219,7 @@ export function FormatPicker({
           </Row>
         )}
         {(selected?.disabledReason || downloadDisabledReason) && info && (
-          <p className="text-[11px] leading-[14px] text-warning">
+          <p className="text-[11px] leading-[14px] text-warning [overflow-wrap:anywhere]">
             {downloadDisabledReason ?? selected?.disabledReason}
           </p>
         )}
@@ -240,10 +240,20 @@ export function FormatPicker({
   );
 }
 
-function Row({ label, title, children }: { label: string; title?: string; children: ReactNode }) {
+function Row({
+  label,
+  title,
+  fill,
+  children,
+}: {
+  label: string;
+  title?: string;
+  fill?: boolean;
+  children: ReactNode;
+}) {
   return (
-    <div className="flex items-center justify-between gap-3" title={title}>
-      <span className="text-[12px] font-medium text-fg-2">{label}</span>
+    <div className={`flex min-w-0 items-center justify-between gap-3 ${fill ? "min-h-12" : ""}`} title={title}>
+      <span className="min-w-0 truncate text-[12px] font-medium text-fg-2">{label}</span>
       {children}
     </div>
   );
@@ -260,7 +270,7 @@ function StreamsTable({
 }) {
   if (streams.length === 0) return <p className="text-fg-2">Streams appear here after fetching</p>;
   return (
-    <div className="scroll-y max-h-40 rounded-md border border-line">
+    <div className="scroll-y max-h-40 overflow-x-auto rounded-md border border-line">
       <table className="tabular w-full text-left text-[11px]">
         <thead className="sticky top-0 bg-inset text-fg-2">
           <tr>
@@ -279,10 +289,10 @@ function StreamsTable({
               aria-selected={selected === s.id}
               className={`cursor-pointer border-t border-line ${selected === s.id ? "bg-accent-soft text-accent" : "hover:bg-card-hover"}`}
             >
-              <td className="px-2 py-1">{s.height ? `${s.height}p` : "-"}</td>
-              <td className="px-2 py-1">{s.fps ?? "-"}</td>
-              <td className="px-2 py-1">{s.vcodec ?? "-"}</td>
-              <td className="px-2 py-1">{s.acodec ?? "-"}</td>
+              <td className="px-2 py-1">{s.height ? `${s.height}p` : "--"}</td>
+              <td className="px-2 py-1">{s.fps ?? "--"}</td>
+              <td className="px-2 py-1">{s.vcodec ?? "--"}</td>
+              <td className="px-2 py-1">{s.acodec ?? "--"}</td>
               <td className="px-2 py-1">{formatBytes(s.sizeBytes)}</td>
               <td className="px-2 py-1">{s.ext}</td>
               <td className="px-2 py-1 font-mono">{s.id}</td>

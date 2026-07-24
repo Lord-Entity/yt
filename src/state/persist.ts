@@ -58,6 +58,25 @@ export function loadUiPref<T>(key: string, fallback: T): T {
   }
 }
 
+/** Synchronous JSON array load under a full key (e.g. "keepsake.favorites.v1"). Never throws. */
+export function loadJsonArray<T>(key: string): T[] {
+  try {
+    const raw = localStorage.getItem(key);
+    const parsed: unknown = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? (parsed as T[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+export function saveJson(key: string, value: unknown): void {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    // Storage blocked or full: data stays in memory for this session.
+  }
+}
+
 export function saveUiPref<T>(key: string, value: T): void {
   try {
     localStorage.setItem(`keepsake.ui.${key}`, JSON.stringify(value));

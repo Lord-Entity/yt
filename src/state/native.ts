@@ -87,19 +87,6 @@ export async function revealFile(path: string): Promise<boolean> {
   }
 }
 
-export async function openUrl(url: string): Promise<void> {
-  try {
-    if (inTauri) {
-      const { openUrl: open } = await import("@tauri-apps/plugin-opener");
-      await open(url);
-    } else {
-      window.open(url, "_blank", "noopener");
-    }
-  } catch {
-    // ignore
-  }
-}
-
 export async function copyText(text: string): Promise<void> {
   try {
     await navigator.clipboard.writeText(text);

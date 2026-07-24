@@ -3,10 +3,11 @@ import { useEffect } from "react";
 import { useActiveCount } from "../../state/downloads";
 import { healthOf, useBinaries, type Health } from "../../state/engine";
 import { MOD } from "../../state/format";
-import { navigate, usePage } from "../../state/nav";
+import { navigate, openAddLink, usePage } from "../../state/nav";
 import { Badge, Dot, type BadgeTone } from "../ui/Badge";
+import { Glyph } from "../ui/Glyph";
 import { Icon, Logo } from "../ui/Icon";
-import { t } from "../ui/motion";
+import { press, t } from "../ui/motion";
 import { NAV_ITEMS } from "./nav-items";
 
 const HEALTH: Record<Health, { tone: BadgeTone; label: string }> = {
@@ -77,32 +78,34 @@ export function Sidebar({
         {NAV_ITEMS.map((item) => {
           const isActive = page === item.page;
           return (
-            <button
+            <motion.button
               key={item.page}
               type="button"
               onClick={() => {
                 navigate(item.page);
                 if (overlay) onCloseOverlay();
               }}
+              whileTap={press}
+              transition={t.press}
               title={rail ? `${item.label} (${MOD}+${item.key})` : undefined}
               aria-current={isActive ? "page" : undefined}
-              className={`relative flex h-10 items-center gap-3 rounded-sm text-[12px] font-medium transition-colors duration-150 ${
-                rail ? "justify-center" : "px-3"
-              } ${isActive ? "text-fg" : "text-fg-2 hover:text-fg"}`}
+              className={`glyph-host icon-host group relative flex h-11 items-center gap-2.5 rounded-[14px_14px_14px_5px] text-[12px] font-medium transition-colors duration-150 ${
+                rail ? "justify-center" : "pr-3 pl-1.5"
+              } ${isActive ? "text-fg" : "text-fg-2 hover:bg-card-hover/50 hover:text-fg"}`}
             >
               {isActive && (
                 <motion.span
                   layoutId="nav-pill"
                   transition={t.spring}
-                  className="absolute inset-0 rounded-sm bg-card-hover"
+                  className="absolute inset-0 rounded-[14px_14px_14px_5px] border border-line bg-card-hover shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]"
                 >
-                  <span className="absolute top-2 bottom-2 left-0 w-[3px] rounded-full bg-accent" />
+                  <span className="absolute top-3 bottom-3 -left-[1px] w-[3px] rounded-r-full bg-accent" />
                 </motion.span>
               )}
-              <span className="relative">
-                <Icon name={item.icon} size={20} />
+              <span className={`relative transition-colors duration-150 ${isActive ? "text-accent" : ""}`}>
+                <Glyph icon={item.icon} size={19} box={34} on={isActive} />
                 {rail && item.page === "downloads" && active > 0 && (
-                  <span className="absolute -top-0.5 -right-0.5 size-2 rounded-full bg-accent" />
+                  <span className="absolute top-0.5 right-0.5 size-2 rounded-full bg-accent shadow-[0_0_0_2px_var(--bg-sidebar)]" />
                 )}
               </span>
               <AnimatePresence initial={false}>
@@ -119,12 +122,29 @@ export function Sidebar({
                   </motion.span>
                 )}
               </AnimatePresence>
-            </button>
+            </motion.button>
           );
         })}
       </nav>
 
       <div className="mt-auto flex flex-col gap-1 px-3 pb-3">
+        <motion.button
+          type="button"
+          onClick={() => {
+            openAddLink("sources");
+            if (overlay) onCloseOverlay();
+          }}
+          whileTap={press}
+          transition={t.press}
+          title={`Add a link to Sources or Favorites`}
+          aria-label="Add link"
+          className={`glyph-host icon-host mb-1 flex h-10 items-center gap-2 rounded-[14px_14px_5px_14px] border border-dashed border-accent-border text-[12px] font-medium text-accent transition-colors duration-150 hover:bg-accent-soft ${
+            rail ? "justify-center" : "px-2"
+          }`}
+        >
+          <Glyph icon="plus" size={16} box={28} />
+          {!rail && <span className="whitespace-nowrap">Add link</span>}
+        </motion.button>
         <div
           className={`flex h-9 items-center gap-2 text-[11px] text-fg-2 ${rail ? "justify-center" : "px-3"}`}
           title={`yt-dlp / ffmpeg: ${health.label}`}
@@ -136,9 +156,9 @@ export function Sidebar({
           <button
             type="button"
             onClick={onSupportedSites}
-            className="flex h-9 items-center gap-2 rounded-sm px-3 text-[12px] text-fg-2 transition-colors hover:bg-accent-soft hover:text-fg"
+            className="icon-host group flex h-9 items-center gap-2 rounded-sm px-3 text-[12px] text-fg-2 transition-colors hover:bg-accent-soft hover:text-fg"
           >
-            <Icon name="globe" size={16} />
+            <Icon name="globe" size={16} animated />
             Supported sites
           </button>
         )}
@@ -147,11 +167,11 @@ export function Sidebar({
           onClick={onToggle}
           title={`${rail ? "Expand sidebar" : "Collapse sidebar"} (${MOD}+B)`}
           aria-label={rail ? "Expand sidebar" : "Collapse sidebar"}
-          className={`flex h-9 items-center rounded-sm text-fg-2 transition-colors hover:bg-accent-soft hover:text-fg ${
+          className={`icon-host group flex h-9 items-center rounded-sm text-fg-2 transition-colors hover:bg-accent-soft hover:text-fg ${
             rail ? "justify-center" : "px-3"
           }`}
         >
-          <Icon name={rail ? "chevronRight" : "chevronLeft"} size={18} />
+          <Icon name={rail ? "chevronRight" : "chevronLeft"} size={18} animated />
         </button>
       </div>
     </motion.aside>

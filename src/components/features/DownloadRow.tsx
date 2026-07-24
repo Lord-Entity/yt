@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { cancelJob, removeJob, retryJob } from "../../state/downloads";
-import { formatBytes, formatClock, formatSpeed } from "../../state/format";
+import { formatBytes, formatEta, formatPct, formatSpeed } from "../../state/format";
 import type { Job } from "../../state/models";
 import { copyText, openFile, revealFile } from "../../state/native";
 import { IconButton } from "../ui/Button";
@@ -26,6 +26,24 @@ function statusText(j: Job): string {
       return `Failed: ${j.error?.message ?? "Unknown error"}`;
     case "cancelled":
       return "Cancelled";
+  }
+}
+
+/** Bar value: null = indeterminate shimmer, number = filled bar. */
+function barPct(j: Job): number | null {
+  switch (j.status) {
+    case "done":
+      return 100;
+    case "queued":
+      return 0;
+    case "merging":
+    case "converting":
+      return null;
+    case "downloading":
+      return j.pct;
+    case "failed":
+    case "cancelled":
+      return j.pct ?? 0;
   }
 }
 
@@ -94,10 +112,8 @@ export function DownloadRow({
   phone?: boolean;
   canReveal?: boolean;
 }) {
-  const [sheet, setSheet] = useState(false);
-  const indeterminate =
-    job.status === "merging" || job.status === "converting" || (job.status === "downloading" && job.pct === null);
-  const pct = indeterminate ? null : (job.pct ?? 0);
+  const [menu, setMenu] = useState(false);
+  const pct = barPct(job);
   const actions = actionsFor(job, canReveal);
   const active = job.status === "downloading" || job.status === "merging" || job.status === "converting";
 
@@ -110,7 +126,7 @@ export function DownloadRow({
           cancelJob(job.id);
         }
       }}
-      className={`group flex items-center gap-3 rounded-lg px-1.5 outline-offset-[-2px] transition-[background-color,transform] duration-200 hover:bg-card-hover active:scale-[0.98] ${compact ? "h-14" : "h-[72px]"}`}
+      className={`group flex w-full min-w-0 items-center gap-3 overflow-hidden rounded-lg px-1.5 outline-offset-[-2px] transition-[background-color,transform] duration-200 hover:bg-card-hover active:scale-[0.98] ${compact ? "h-14" : "h-[72px]"}`}
     >
       <Thumb
         src={job.thumbnailUrl}
@@ -118,12 +134,14 @@ export function DownloadRow({
         className={`shrink-0 rounded-[10px] ${compact ? "size-10" : "size-12"}`}
       />
       <div className="flex min-w-0 flex-1 flex-col gap-1">
-        <div className="flex items-baseline gap-2">
-          <span className="truncate text-[13px] font-medium" title={job.title}>
+        <div className="flex min-w-0 items-baseline gap-2">
+          <span className="min-w-0 truncate text-[13px] font-medium" title={job.title}>
             {job.title}
           </span>
           {!compact && job.channel && !phone && (
-            <span className="truncate text-[11px] text-fg-2">{job.channel}</span>
+            <span className="max-w-[40%] min-w-0 shrink-0 truncate text-[11px] text-fg-2" title={job.channel}>
+              {job.channel}
+            </span>
           )}
         </div>
         <Progress pct={pct} tone={tone(job)} label={job.title} />
@@ -135,27 +153,30 @@ export function DownloadRow({
         </span>
       </div>
       {!phone && !compact && (
-        <div className="tabular flex w-40 shrink-0 flex-col items-end text-[11px] leading-[14px] text-fg-2">
-          <span className="text-[13px] font-medium text-fg">
-            {job.pct !== null ? `${Math.round(job.pct)}%` : "-"}
+        <div className="tabular flex w-40 min-w-0 shrink-0 flex-col items-end overflow-hidden text-[11px] leading-[14px] whitespace-nowrap text-fg-2">
+          <span className="max-w-full truncate text-[13px] font-medium text-fg">
+            {job.status === "done" ? "100%" : formatPct(job.pct)}
           </span>
-          <span>
-            {active ? `${formatSpeed(job.speedBps)} · ETA ${formatClock(job.etaSec)}` : ""}
-          </span>
-          <span>{formatBytes(job.totalBytes)}</span>
+          {active && (
+            <span className="max-w-full truncate" title={`${formatSpeed(job.speedBps)} · ${formatEta(job.etaSec)}`}>
+              {formatSpeed(job.speedBps)} · {formatEta(job.etaSec)}
+            </span>
+          )}
+          <span className="max-w-full truncate">{formatBytes(job.totalBytes)}</span>
         </div>
       )}
       {compact && !phone && (
-        <span className="tabular w-12 shrink-0 text-right text-[12px] font-medium">
-          {job.pct !== null ? `${Math.round(job.pct)}%` : ""}
+        <span className="tabular w-12 shrink-0 text-right text-[12px] font-medium whitespace-nowrap">
+          {job.pct !== null ? formatPct(job.pct) : ""}
         </span>
       )}
       {phone ? (
         <>
-          <IconButton icon="more" label="Actions" size={48} onClick={() => setSheet(true)} />
+          <IconButton icon="more" label="Actions" size={48} className="-mr-1.5 shrink-0" onClick={() => setMenu(true)} />
+          {/* Centered action modal (portaled), not a bottom sheet. */}
           <ActionSheet
-            open={sheet}
-            onClose={() => setSheet(false)}
+            open={menu}
+            onClose={() => setMenu(false)}
             title={job.title}
             actions={actions.map<SheetAction>((a) => ({
               label: a.label,

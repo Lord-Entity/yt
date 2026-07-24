@@ -4,7 +4,7 @@ import { formatClock, formatCount, formatDate } from "../../state/format";
 import { Badge } from "../ui/Badge";
 import { Icon } from "../ui/Icon";
 import { Skeleton } from "../ui/Fields";
-import { t } from "../ui/motion";
+import { press, t } from "../ui/motion";
 
 function kicker(info: VideoInfo): string {
   const site = info.site.toUpperCase();
@@ -77,7 +77,7 @@ export function PreviewCard({
       {loading ? (
         <motion.div key="loading" {...fade} transition={t.base} className={`flex min-h-0 flex-1 gap-4 ${phone ? "flex-col" : ""}`}>
           <Skeleton className={phone ? "aspect-video w-full" : "aspect-video h-full max-h-full shrink-0 rounded-md"} />
-          <div className="flex flex-1 flex-col gap-3 pt-1">
+          <div className="flex min-w-0 flex-1 flex-col gap-3 pt-1">
             <div className="text-[11px] font-medium tracking-wider text-fg-3">FETCHING</div>
             <div className="text-[15px] font-semibold">Reading link info...</div>
             <Skeleton className="h-3 w-3/4" />
@@ -94,16 +94,20 @@ export function PreviewCard({
             className={`aspect-video shrink-0 rounded-md ${phone ? "w-full" : "h-full max-h-[220px] self-start"}`}
           />
           <div className="flex min-w-0 flex-1 flex-col gap-2">
-            <div className="text-[11px] font-medium tracking-wider text-accent">{kicker(info)}</div>
+            <div className="truncate text-[11px] font-medium tracking-wider text-accent">{kicker(info)}</div>
             <h3
-              className="selectable line-clamp-2 text-[15px] leading-[22px] font-semibold"
+              className="selectable line-clamp-2 min-w-0 text-[15px] leading-[22px] font-semibold [overflow-wrap:anywhere]"
               title={info.title}
             >
               {info.title.length > 140 ? `${info.title.slice(0, 139)}…` : info.title}
             </h3>
-            {info.channel && <div className="truncate text-fg-2">{info.channel}</div>}
-            <div className="mt-1 grid grid-cols-3 gap-3">
-              <Meta label="Duration" value={info.durationSec ? formatClock(info.durationSec) : "-"} />
+            {info.channel && (
+              <div className="min-w-0 truncate text-fg-2" title={info.channel}>
+                {info.channel}
+              </div>
+            )}
+            <div className="mt-1 grid grid-cols-3 gap-2 sm:gap-3">
+              <Meta label="Duration" value={info.durationSec ? formatClock(info.durationSec) : "--"} />
               <Meta label="Views" value={formatCount(info.viewCount)} />
               <Meta label="Uploaded" value={formatDate(info.uploadDate)} />
             </div>
@@ -116,13 +120,16 @@ export function PreviewCard({
               </Badge>
             )}
             {phone && onOpenFormats && (
-              <button
+              <motion.button
                 type="button"
                 onClick={onOpenFormats}
-                className="mt-2 h-12 rounded-md bg-accent text-[14px] font-semibold text-on-accent"
+                whileTap={press}
+                transition={t.press}
+                className="icon-host mt-2 inline-flex h-12 items-center justify-center gap-2 rounded-md bg-accent text-[14px] font-semibold text-on-accent shadow-[inset_0_1px_0_rgba(255,255,255,0.22),0_10px_22px_-12px_var(--accent)] transition-colors duration-150 active:bg-accent-active"
               >
+                <Icon name="download" size={18} animated />
                 Choose format
-              </button>
+              </motion.button>
             )}
           </div>
         </motion.div>
@@ -133,8 +140,8 @@ export function PreviewCard({
           transition={t.base}
           className="flex flex-1 flex-col items-center justify-center gap-2 text-center"
         >
-          <span className="flex size-12 items-center justify-center rounded-full bg-accent-soft text-accent">
-            <Icon name="link" size={22} />
+          <span className="breathe icon-host flex size-12 items-center justify-center rounded-full bg-accent-soft text-accent">
+            <Icon name="link" size={22} animated />
           </span>
           <div className="text-[11px] font-medium tracking-wider text-fg-3">NO VIDEO</div>
           <div className="text-[15px] font-semibold">Paste a link to get started</div>

@@ -8,8 +8,8 @@
  * -P TYPES:PATH, --trim-filenames, --js-runtimes, --cookies-from-browser, --convert-thumbnails). INFERRED: not run here.
  */
 import { Channel, invoke } from "@tauri-apps/api/core";
-import type { DownloadProgress, DownloadRequest, StreamInfo, Thumbnail, VideoInfo } from "../lib/types";
-import { appError, EngineError, fail, friendlyError } from "./errors";
+import type { AppError, DownloadProgress, DownloadRequest, StreamInfo, Thumbnail, VideoInfo } from "../lib/types";
+import { appError, EngineError, fail, friendlyError, toAppError } from "./errors";
 
 export type YtdlpEvent = { event: "stdout"; line: string } | { event: "stderr"; line: string };
 
@@ -54,6 +54,7 @@ export async function runYtdlp(
     code = await invoke<number>("run_ytdlp", { jobId, args, tempDir: tempDir ?? null, onEvent: ch });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
+    if (msg.includes("js_runtime_missing")) fail("js_runtime_missing");
     if (/not found|no such file|missing/i.test(msg) && /yt-dlp|sidecar/i.test(msg)) fail("ytdlp_missing", msg);
     throw new EngineError(friendlyError(msg));
   } finally {
@@ -66,8 +67,51 @@ export function cancelYtdlp(jobId: string): Promise<void> {
   return invoke<void>("cancel_ytdlp", { jobId });
 }
 
-export function binaryVersions(): Promise<{ ytdlp: string | null; ffmpeg: string | null }> {
+export function binaryVersions(): Promise<{ ytdlp: string | null; ffmpeg: string | null; node?: string | null }> {
   return invoke("binary_status");
+}
+
+// ---------------- cookie fallback ----------------
+
+/** Retry order when YouTube shows its bot check and Settings > Cookies is "off" (yt-dlp browser names). */
+export const COOKIE_FALLBACK_ORDER = ["edge", "chrome", "firefox", "brave", "chromium", "opera", "vivaldi"] as const;
+
+const BROWSER_LABEL: Record<string, string> = {
+  edge: "Edge",
+  chrome: "Chrome",
+  firefox: "Firefox",
+  brave: "Brave",
+  chromium: "Chromium",
+  opera: "Opera",
+  vivaldi: "Vivaldi",
+};
+
+let installedPromise: Promise<string[]> | undefined;
+
+/** Fallback browsers whose profile folder exists, in COOKIE_FALLBACK_ORDER. Cached after the first success. */
+async function fallbackBrowsers(): Promise<string[]> {
+  installedPromise ??= invoke<string[]>("list_installed_browsers").catch((): string[] => {
+    installedPromise = undefined;
+    return [];
+  });
+  const have = new Set(await installedPromise);
+  return COOKIE_FALLBACK_ORDER.filter((b) => have.has(b));
+}
+
+/** Only fall back when the user has not picked a browser themselves. */
+function wantsFallback(cookiesBrowser?: string): boolean {
+  return !cookiesBrowser || cookiesBrowser === "off";
+}
+
+function triedDetail(err: AppError, tried: string[]): AppError {
+  if (tried.length === 0) return err;
+  const note = `Also tried cookies from ${tried.map((b) => BROWSER_LABEL[b] ?? b).join(", ")}.`;
+  return { ...err, detail: err.detail ? `${err.detail} ${note}` : note, cookiesHint: true };
+}
+
+/** Errors that end the fallback loop at once (no point trying another browser). */
+function isFinal(code: AppError["code"]): boolean {
+  return code === "cancelled" || code === "js_runtime_missing" || code === "ytdlp_missing";
 }
 
 function assertHttpUrl(url: string) {
@@ -177,11 +221,34 @@ function mapYdlInfo(j: YdlInfo, url: string): VideoInfo {
   };
 }
 
-/** `yt-dlp -J -i --flat-playlist -- URL`. */
-export async function fetchInfoYtdlp(
-  url: string,
-  opts: { cookiesBrowser?: string; signal?: AbortSignal } = {},
-): Promise<VideoInfo> {
+type InfoOpts = { cookiesBrowser?: string; signal?: AbortSignal };
+
+/**
+ * `yt-dlp -J -i --flat-playlist -- URL`. On a bot check with Settings > Cookies "off", retries once per
+ * installed browser (COOKIE_FALLBACK_ORDER) with `--cookies-from-browser` and stops at the first success.
+ */
+export async function fetchInfoYtdlp(url: string, opts: InfoOpts = {}): Promise<VideoInfo> {
+  try {
+    return await fetchInfoOnce(url, opts);
+  } catch (e) {
+    const first = toAppError(e);
+    if (first.code !== "bot_check" || !wantsFallback(opts.cookiesBrowser)) throw e;
+    const tried: string[] = [];
+    for (const b of await fallbackBrowsers()) {
+      if (opts.signal?.aborted) fail("cancelled");
+      tried.push(b);
+      try {
+        return await fetchInfoOnce(url, { ...opts, cookiesBrowser: b });
+      } catch (e2) {
+        if (opts.signal?.aborted) fail("cancelled");
+        if (isFinal(toAppError(e2).code)) throw e2;
+      }
+    }
+    throw new EngineError(triedDetail(first, tried));
+  }
+}
+
+async function fetchInfoOnce(url: string, opts: InfoOpts): Promise<VideoInfo> {
   assertHttpUrl(url);
   const jobId = `info-${crypto.randomUUID()}`;
   const onAbort = () => void cancelYtdlp(jobId).catch(() => undefined);
@@ -297,7 +364,44 @@ export function parseProgressLine(line: string): Partial<DownloadProgress> | nul
   };
 }
 
+/**
+ * Download with yt-dlp. On a bot check with Settings > Cookies "off", retries once per installed browser
+ * (COOKIE_FALLBACK_ORDER) with `--cookies-from-browser`, stops at the first success and sets
+ * `note: "Retried with cookies from <Browser>"`. An explicit browser choice is never overridden.
+ * Every attempt reuses the job id: Rust drops the job from its table and deletes `.keepsake-tmp/<id>` after
+ * each exit, so cancel_ytdlp and the temp cleanup behave the same on every attempt.
+ */
 export async function downloadYtdlp(
+  req: DownloadRequest,
+  outDir: string,
+  emit: (p: DownloadProgress) => void,
+  isCancelled: () => boolean,
+): Promise<DownloadProgress> {
+  const first = await downloadOnce(req, outDir, emit, isCancelled);
+  if (first.status !== "failed" || first.error?.code !== "bot_check" || !wantsFallback(req.cookiesBrowser)) {
+    return first;
+  }
+  const cancelled = (): DownloadProgress => ({ id: req.id, status: "cancelled", downloadedBytes: 0, error: appError("cancelled") });
+  const tried: string[] = [];
+  for (const b of await fallbackBrowsers()) {
+    if (isCancelled()) return cancelled();
+    tried.push(b);
+    emit({ id: req.id, status: "downloading", downloadedBytes: 0 });
+    let r: DownloadProgress;
+    try {
+      r = await downloadOnce({ ...req, cookiesBrowser: b }, outDir, emit, isCancelled);
+    } catch (e) {
+      const err = toAppError(e);
+      if (isCancelled() || isFinal(err.code)) throw e;
+      continue;
+    }
+    if (r.status === "done") return { ...r, note: `Retried with cookies from ${BROWSER_LABEL[b] ?? b}` };
+    if (r.status === "cancelled" || (r.error && isFinal(r.error.code))) return r;
+  }
+  return { ...first, error: triedDetail(first.error, tried) };
+}
+
+async function downloadOnce(
   req: DownloadRequest,
   outDir: string,
   emit: (p: DownloadProgress) => void,

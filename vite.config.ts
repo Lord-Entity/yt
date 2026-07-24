@@ -17,7 +17,7 @@ export default defineConfig({
     watch: { ignored: ["**/src-tauri/**"] },
   },
   // ffmpeg.wasm spawns its own module worker; pre-bundling breaks its worker URL.
-  optimizeDeps: { exclude: ["@ffmpeg/ffmpeg", "@ffmpeg/util"] },
+  optimizeDeps: { exclude: ["@ffmpeg/ffmpeg"] },
   worker: { format: "es" },
   build: { target: "es2022", outDir: "dist" },
 });

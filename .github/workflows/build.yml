@@ -1,5 +1,5 @@
 # Builds Keepsake for Windows (nsis, msi), Linux (deb, rpm, AppImage) and Android (debug APK)
-# and uploads each as a workflow artifact. See README.md / BUILD.md.
+# and uploads each as a workflow artifact. See README.md for build instructions.
 # Assumes the repository root is the `fetchly` folder. If fetchly is a subfolder of the
 # repo, move this file to <repo>/.github/workflows/ and set KEEPSAKE_DIR: fetchly.
 name: build
@@ -143,7 +143,8 @@ jobs:
           if [ ! -x "$SDKMANAGER" ]; then SDKMANAGER="$(command -v sdkmanager)"; fi
           echo "Using $SDKMANAGER"
           yes | "$SDKMANAGER" --licenses > /dev/null || true
-          "$SDKMANAGER" --install "platform-tools" "build-tools;34.0.0" "platforms;android-34" "ndk;$NDK_VERSION"
+          # Must match the generated Gradle project: Tauri CLI 2.12 writes compileSdk = 37 / targetSdk = 37.
+          "$SDKMANAGER" --install "platform-tools" "build-tools;37.0.0" "platforms;android-37" "ndk;$NDK_VERSION"
           echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"
           echo "NDK_HOME=$SDK/ndk/$NDK_VERSION" >> "$GITHUB_ENV"
           echo "ANDROID_NDK_HOME=$SDK/ndk/$NDK_VERSION" >> "$GITHUB_ENV"
@@ -168,7 +169,7 @@ jobs:
         run: bun run android:init --ci
 
       # build:android is `tauri android build --apk`; --debug makes it a debug-signed APK
-      # that installs directly on a phone. Release signing: see BUILD.md.
+      # that installs directly on a phone. Release signing: see README.md (Build from source).
       - name: Build debug APK
         run: bun run build:android --debug --ci
 
@@ -199,5 +200,7 @@ jobs:
       - uses: softprops/action-gh-release@v2
         with:
           draft: true
+          # Tags with a suffix (v2.1.0-rc.1) are marked pre-release; plain tags (v2.1.0) are production.
+          prerelease: ${{ contains(github.ref_name, '-') }}
           generate_release_notes: true
           files: release-files/*

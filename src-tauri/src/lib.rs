@@ -5,11 +5,6 @@ use tauri::Manager;
 
 mod ytdlp;
 
-#[tauri::command]
-fn app_version() -> String {
-    env!("CARGO_PKG_VERSION").to_string()
-}
-
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -37,10 +32,10 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            app_version,
             ytdlp::run_ytdlp,
             ytdlp::cancel_ytdlp,
-            ytdlp::binary_status
+            ytdlp::binary_status,
+            ytdlp::list_installed_browsers
         ])
         .build(tauri::generate_context!())
         .expect("error while building Keepsake")

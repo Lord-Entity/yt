@@ -26,6 +26,8 @@ function short(detail: string, limit = 300): string {
 }
 
 const RULES: [AppErrorCode, string[], string[]?][] = [
+  // Rust run_ytdlp rejects with "js_runtime_missing: ..." (src-tauri/src/ytdlp.rs).
+  ["js_runtime_missing", ["js_runtime_missing"]],
   ["unsupported_url", ["unsupported url"]],
   ["drm", ["drm protected", "drm-protected", "drm:"]],
   ["age_restricted", ["age-restricted", "age restricted", "confirm your age", "age verification"]],

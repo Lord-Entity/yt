@@ -27,15 +27,6 @@ export function timeoutSignal(ms: number, outer?: AbortSignal | null): AbortSign
   return signals.length === 1 ? signals[0] : AbortSignal.any(signals);
 }
 
-/** Reject if `p` does not settle within `ms` (default 15 s). */
-export function withTimeout<T>(p: Promise<T>, ms = DEFAULT_TIMEOUT_MS, what = "Request"): Promise<T> {
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const t = new Promise<never>((_, reject) => {
-    timer = setTimeout(() => reject(new DOMException(`${what} timed out`, "TimeoutError")), ms);
-  });
-  return Promise.race([p, t]).finally(() => clearTimeout(timer));
-}
-
 const YT_HOST = /(^|\.)(youtube\.com|youtube-nocookie\.com|youtu\.be|googlevideo\.com|ytimg\.com)$/i;
 const YT_ORIGIN = "https://www.youtube.com";
 

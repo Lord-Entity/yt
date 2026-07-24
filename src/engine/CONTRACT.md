@@ -41,13 +41,24 @@ Kill the process tree for `jobId` (Unix: SIGTERM group, SIGKILL after 2 s), wait
 
 ### `binary_status`
 ```ts
-invoke<{ ytdlp: string | null; ffmpeg: string | null }>("binary_status")
+invoke<{ ytdlp: string | null; ffmpeg: string | null; node: string | null }>("binary_status")
 ```
-Version strings from `yt-dlp --version` and the first line of `ffmpeg -version`, or `null` when missing or failing.
+Version strings from `yt-dlp --version`, the first line of `ffmpeg -version` and `node --version` (the Node found by the lookup below), or `null` when missing or failing. `BinaryStatus` gains optional `node` ("ok" | "missing") and `nodeVersion`.
+
+### `list_installed_browsers`
+```ts
+invoke<string[]>("list_installed_browsers")
+```
+yt-dlp browser names (`edge chrome firefox brave chromium opera vivaldi`) whose profile folder exists (Windows: `%LOCALAPPDATA%` / `%APPDATA%`; Linux: `~/.config`, `~/.mozilla`, snap Firefox). Used by the cookie fallback.
+
+### JS runtime and cookie fallback
+- Rust looks for Node: PATH, then `%ProgramFiles%\nodejs`, `C:\Program Files\nodejs`, `%LOCALAPPDATA%\Programs\nodejs`, `%NVM_SYMLINK%` (Windows) or `/usr/local/bin`, `/usr/bin` (Linux), and prepends `--no-js-runtimes --js-runtimes node:<absolute path>`. No Node + YouTube URL: `run_ytdlp` rejects with `js_runtime_missing: ...` (TS code `js_runtime_missing`). No Node + other site: runs with no JS runtime.
+- The validator accepts `--js-runtimes node` or `node:<absolute path>` only.
+- Bot check (`bot_check`) with Settings > Cookies "off": TS retries once per installed browser in the order edge, chrome, firefox, brave, chromium, opera, vivaldi with `--cookies-from-browser <b>`, stops at the first success (download result `note: "Retried with cookies from <Browser>"`), else returns `bot_check` (cookiesHint true). An explicit browser choice is never overridden. Applies to downloads and to yt-dlp info fetches.
 
 ## 3. Arguments TS sends (for reference and Rust tests)
 
-Every call: `--encoding utf-8 --no-warnings [--cookies-from-browser <b>]`. Rust prepends `--ignore-config --no-plugin-dirs --no-js-runtimes --js-runtimes node --ffmpeg-location <dir>`, so TS does not repeat them.
+Every call: `--encoding utf-8 --no-warnings [--cookies-from-browser <b>]`. Rust prepends `--ignore-config --no-plugin-dirs --no-js-runtimes [--js-runtimes node:<path>] --ffmpeg-location <dir>`, so TS does not repeat them.
 
 - Info: `... -J -i --flat-playlist -- <url>`. JSON is the first stdout line starting with `{`.
 - Download (all modes): `--windows-filenames --trim-filenames <60..200> -P home:<outDir> -P temp:<tempDir> --newline --progress --progress-template "download:KEEPSAKE|status|downloaded|total|estimate|speed|eta|playlist_index|n_entries|filename" --progress-template "postprocess:KEEPSAKE_PP|status|postprocessor" --print "after_move:KEEPSAKE_DONE|%(filepath)s" -i`
@@ -61,5 +72,5 @@ Every call: `--encoding utf-8 --no-warnings [--cookies-from-browser <b>]`. Rust 
 - `@tauri-apps/plugin-http` (npm 2.8.3 installed) + `tauri-plugin-http` crate; capability `http:default` with allow scope: `https://*.youtube.com/*`, `https://youtube.com/*`, `https://*.googlevideo.com/*`, `https://*.ytimg.com/*`, `https://*.ggpht.com/*`, `https://cdn.jsdelivr.net/*`, and for desktop thumbnails of other sites `https://*/*` (or desktop-only capability).
 - `@tauri-apps/plugin-fs` (npm 2.7.1 installed) + `tauri-plugin-fs` crate, Android capability: `fs:allow-open`, `fs:allow-write`, `fs:allow-write-file`, `fs:allow-mkdir`, `fs:allow-exists`, `fs:allow-remove`, scope `$DOWNLOAD/**` (plus any user-picked folder).
 - CSP `script-src 'self' 'unsafe-eval' 'wasm-unsafe-eval' blob:` (youtubei.js decipher uses `new Function`; ffmpeg.wasm), `worker-src 'self' blob:`, `connect-src 'self' ipc: http://ipc.localhost blob:`.
-- `vite.config.ts`: `optimizeDeps: { exclude: ["@ffmpeg/ffmpeg", "@ffmpeg/util"] }` and `worker: { format: "es" }` (ffmpeg.wasm spawns a module worker).
-- Desktop yt-dlp needs a `node` executable on PATH for `--js-runtimes node` (or Rust can pass `node:<path>`).
+- `vite.config.ts`: `optimizeDeps: { exclude: ["@ffmpeg/ffmpeg"] }` and `worker: { format: "es" }` (ffmpeg.wasm spawns a module worker).
+- Desktop yt-dlp needs Node.js for YouTube; Rust passes `--js-runtimes node:<path>` (see section 2).

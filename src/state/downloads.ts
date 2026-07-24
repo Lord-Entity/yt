@@ -137,10 +137,16 @@ function finish(id: string, last: DownloadProgress) {
     filePath: last.filePath ?? job.filePath,
     error: status === "failed" ? (last.error ?? asAppError("Download failed")) : null,
     // Desktop playlists: the engine puts "N videos, M failed" in error.message on a done result.
+    // last.note: e.g. "Retried with cookies from Edge" after the automatic cookie fallback.
     summary:
-      status === "done" && last.playlistCount && last.playlistCount > 1
-        ? (last.error?.message ?? `${last.playlistCount} videos`)
-        : undefined,
+      status !== "done"
+        ? undefined
+        : [
+            last.playlistCount && last.playlistCount > 1 ? (last.error?.message ?? `${last.playlistCount} videos`) : "",
+            last.note ?? "",
+          ]
+            .filter(Boolean)
+            .join(" · ") || undefined,
     finishedAt: Date.now(),
   };
   patch(id, done);
@@ -148,7 +154,7 @@ function finish(id: string, last: DownloadProgress) {
     notify({
       tone: "success",
       title: "Saved to your library",
-      body: done.summary ?? done.title,
+      body: done.summary ? `${done.title} · ${done.summary}` : done.title,
       action: { label: "Open downloads", run: () => navigate("downloads") },
     });
   } else if (status === "failed") {

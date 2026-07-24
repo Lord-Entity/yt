@@ -1,12 +1,15 @@
 import { useEffect } from "react";
 import { createStore, useStore } from "./store";
 
-export type Page = "home" | "downloads" | "library" | "settings";
-export const PAGES: Page[] = ["home", "downloads", "library", "settings"];
+export type Page = "home" | "downloads" | "library" | "favorites" | "sources" | "settings";
+/** Sidebar order; Mod+1..6 follow it. */
+export const PAGES: Page[] = ["home", "downloads", "library", "favorites", "sources", "settings"];
 export const PAGE_TITLES: Record<Page, string> = {
   home: "Home",
   downloads: "Downloads",
   library: "Library",
+  favorites: "Favorites",
+  sources: "Sources",
   settings: "Settings",
 };
 
@@ -54,3 +57,17 @@ export function useCommand(handler: (c: Command) => void, page?: Page) {
     };
   }, [handler, page]);
 }
+
+/** "Add link" flow: a global dialog opened from the FAB, Sources and Favorites. */
+export type AddLinkTarget = "sources" | "favorites";
+export const addLinkStore = createStore<{ open: boolean; target: AddLinkTarget; url: string; seq: number }>({
+  open: false,
+  target: "sources",
+  url: "",
+  seq: 0,
+});
+/** Each open bumps `seq`, which remounts the form with fresh state. */
+export const openAddLink = (target: AddLinkTarget = "sources", url = "") =>
+  addLinkStore.set((s) => ({ open: true, target, url, seq: s.seq + 1 }));
+export const closeAddLink = () => addLinkStore.set((s) => ({ ...s, open: false }));
+export const useAddLink = () => useStore(addLinkStore, (s) => s);

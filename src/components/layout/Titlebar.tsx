@@ -6,7 +6,7 @@ import { navigate, PAGE_TITLES, usePage } from "../../state/nav";
 import { cycleTheme, useSettings, type ThemePref } from "../../state/settings";
 import { IconButton } from "../ui/Button";
 import type { IconName } from "../ui/Icon";
-import { t } from "../ui/motion";
+import { press, t } from "../ui/motion";
 import { WindowControls } from "./WindowControls";
 
 const THEME_ICON: Record<ThemePref, IconName> = { system: "monitor", light: "sun", dark: "moon" };
@@ -47,9 +47,10 @@ export function Titlebar({ action, compact }: { action?: ReactNode; compact?: bo
               initial={{ opacity: 0, scale: 0.9 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.9 }}
+              whileTap={press}
               transition={t.fast}
               onClick={() => navigate("downloads")}
-              className="tabular flex h-8 items-center gap-1.5 rounded-full bg-accent-soft px-3 text-[12px] font-medium text-accent"
+              className="tabular flex h-8 items-center gap-1.5 rounded-full bg-accent-soft px-3 text-[12px] font-medium text-accent transition-[box-shadow] duration-150 hover:shadow-[inset_0_0_0_1px_var(--accent-border)]"
               title="Active downloads"
             >
               <span className="spinner size-3" aria-hidden="true" />

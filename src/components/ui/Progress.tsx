@@ -49,7 +49,7 @@ export function Progress({
         )
       ) : (
         <motion.div
-          className={`absolute inset-0 rounded-full ${FILL[tone]}`}
+          className={`absolute inset-0 rounded-full shadow-[inset_0_1px_0_rgba(255,255,255,0.18)] transition-colors duration-300 ${FILL[tone]}`}
           style={{ transformOrigin: "0% 50%" }}
           initial={false}
           animate={{ scaleX: value / 100 }}

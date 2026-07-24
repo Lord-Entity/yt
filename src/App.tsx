@@ -6,18 +6,22 @@ import { Splash } from "./components/layout/Splash";
 import { TabBar } from "./components/layout/TabBar";
 import { Titlebar } from "./components/layout/Titlebar";
 import { Button } from "./components/ui/Button";
+import { Fab } from "./components/ui/Fab";
 import { Toasts } from "./components/ui/Toasts";
+import { AddLinkDialog } from "./pages/AddLink";
 import { DownloadsPage } from "./pages/Downloads";
+import { FavoritesPage } from "./pages/Favorites";
 import { HomePage } from "./pages/Home";
 import { LibraryPage } from "./pages/Library";
 import { SettingsPage } from "./pages/Settings";
+import { SourcesPage } from "./pages/Sources";
 import { cancelAll, clearFinished, useDownloads } from "./state/downloads";
 import { refreshBinaries, versionsLine } from "./state/engine";
 import { isMac } from "./state/format";
 import { useIsNarrowWindow, useIsPhone } from "./state/hooks";
 import { initLibrary } from "./state/library";
 import { showWindow } from "./state/native";
-import { emit, emitOn, navigate, PAGES, usePage, type Page } from "./state/nav";
+import { emit, emitOn, navigate, openAddLink, PAGES, usePage, type Page } from "./state/nav";
 import { initSettings, toggleDarkLight, updateSettings, useSettings } from "./state/settings";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -160,7 +164,7 @@ function Shell() {
     }
   }, [narrowWindow, collapsedPref]);
 
-  // Keyboard shortcuts (UI_CONTENT.md section 7).
+  // Keyboard shortcuts (UI_CONTENT.md section 7). Mod+1..6 follow the sidebar order.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const mod = isMac ? e.metaKey : e.ctrlKey;
@@ -176,7 +180,7 @@ function Shell() {
       if (k === "b" && !phone) {
         e.preventDefault();
         toggleSidebar();
-      } else if (k >= "1" && k <= "4") {
+      } else if (k >= "1" && k <= String(PAGES.length)) {
         e.preventDefault();
         navigate(PAGES[Number(k) - 1]);
       } else if (k === "l") {
@@ -210,7 +214,24 @@ function Shell() {
       <Button size="sm" variant="ghost" onClick={clearFinished}>
         Clear finished
       </Button>
+    ) : page === "sources" && phone ? (
+      <Button size="sm" variant="ghost" icon="chevronLeft" onClick={() => navigate("home")}>
+        Home
+      </Button>
     ) : null;
+
+  const fab =
+    page === "settings" ? null : (
+      <Fab
+        phone={phone}
+        className={phone ? "right-4 bottom-4" : "right-6 bottom-6"}
+        actions={[
+          { label: "Paste and fetch", icon: "clipboard", onSelect: () => emitOn("home", "paste-and-fetch") },
+          { label: "Add to Favorites", icon: "heart", onSelect: () => openAddLink("favorites") },
+          { label: "Add a source", icon: "sources", onSelect: () => openAddLink("sources") },
+        ]}
+      />
+    );
 
   const content = (
     <AnimatePresence mode="wait" initial={false}>
@@ -231,7 +252,10 @@ function Shell() {
       {phone ? (
         <div className="flex h-full min-w-0 flex-1 flex-col">
           <Titlebar compact action={action} />
-          <main className="scroll-y min-h-0 flex-1 px-4 pb-4">{content}</main>
+          <div className="relative flex min-h-0 flex-1 flex-col">
+            <main className="scroll-y min-h-0 flex-1 px-4 pb-4">{content}</main>
+            {fab}
+          </div>
           <TabBar />
         </div>
       ) : (
@@ -246,12 +270,16 @@ function Shell() {
             />
             <motion.div layout className="flex h-full min-w-0 flex-1 flex-col">
               <Titlebar action={action} />
-              <main className="scroll-y min-h-0 flex-1 px-6 pb-6">{content}</main>
+              <div className="relative flex min-h-0 flex-1 flex-col">
+                <main className="scroll-y min-h-0 flex-1 px-6 pb-6">{content}</main>
+                {fab}
+              </div>
             </motion.div>
           </div>
         </LayoutGroup>
       )}
       <SupportedSitesDialog open={sites} onClose={() => setSites(false)} fullScreen={phone} />
+      <AddLinkDialog phone={phone} />
     </div>
   );
 }
@@ -264,6 +292,10 @@ function PageView({ page, phone, onSupportedSites }: { page: Page; phone: boolea
       return <DownloadsPage phone={phone} />;
     case "library":
       return <LibraryPage phone={phone} />;
+    case "favorites":
+      return <FavoritesPage phone={phone} />;
+    case "sources":
+      return <SourcesPage phone={phone} />;
     case "settings":
       return <SettingsPage phone={phone} onSupportedSites={onSupportedSites} />;
   }

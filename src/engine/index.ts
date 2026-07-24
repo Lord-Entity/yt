@@ -88,6 +88,8 @@ export async function binaryStatus(): Promise<BinaryStatus> {
       ffmpeg: v.ffmpeg ? "ok" : "missing",
       ytdlpVersion: v.ytdlp ?? undefined,
       ffmpegVersion: v.ffmpeg ?? undefined,
+      node: v.node ? "ok" : "missing",
+      nodeVersion: v.node ?? undefined,
     };
   } catch {
     return { platform: p, ytdlp: "missing", ffmpeg: "missing" };

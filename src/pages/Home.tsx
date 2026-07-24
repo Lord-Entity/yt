@@ -5,8 +5,10 @@ import { FormatPicker, type PickerChoice } from "../components/features/FormatPi
 import { PreviewCard, Thumb } from "../components/features/PreviewCard";
 import { ActionModal } from "../components/ui/ActionModal";
 import { Button, IconButton } from "../components/ui/Button";
-import { Card, type Span } from "../components/ui/Card";
-import { Icon } from "../components/ui/Icon";
+import { Card, spanStyle, type Span } from "../components/ui/Card";
+import { Glyph } from "../components/ui/Glyph";
+import { Icon, type IconName } from "../components/ui/Icon";
+import { ActivityChart, CategoryBars, StatCard } from "../components/ui/Stats";
 import { Sheet } from "../components/ui/Sheet";
 import { listItem, t } from "../components/ui/motion";
 import type { AppError, FormatOption, VideoInfo } from "../lib/types";
@@ -17,7 +19,11 @@ import { useWidth } from "../state/hooks";
 import { computeStats, useLibrary } from "../state/library";
 import { isActive } from "../state/models";
 import { pickFolder, readClipboard } from "../state/native";
-import { navigate, useCommand, type Command } from "../state/nav";
+import { toggleFavorite, useIsFavorite } from "../state/favorites";
+import { navigate, openAddLink, useCommand, type Command } from "../state/nav";
+import { useSources } from "../state/sources";
+import { useStats } from "../state/stats";
+import { favoriteFromInfo, favoriteIdOf } from "./AddLink";
 import { settingsStore, updateSettings, useSettings } from "../state/settings";
 import { createStore, useStore } from "../state/store";
 import { notify } from "../state/toast";
@@ -100,8 +106,12 @@ const SPANS: Record<string, Span> = {
   picker: { wide: [5, 4], narrow: [12, 4] },
   empty: { wide: [12, 4], narrow: [12, 4] },
   active: { wide: [8, 3], narrow: [12, 3] },
-  stat: { wide: [2, 2], narrow: [3, 2] },
-  recent: { wide: [8, 3], narrow: [12, 3] },
+  stats: { wide: [4, 3], narrow: [12, 3] },
+  stat: { wide: [6, 2], narrow: [6, 2] },
+  activity: { wide: [8, 3], narrow: [12, 3] },
+  categories: { wide: [4, 3], narrow: [12, 3] },
+  recent: { wide: [8, 4], narrow: [12, 3] },
+  sources: { wide: [4, 2], narrow: [12, 1] },
   folder: { wide: [4, 2], narrow: [12, 1] },
 };
 
@@ -123,7 +133,9 @@ export function HomePage({ phone }: { phone: boolean }) {
   const platform = getPlatform();
 
   const activeJobs = useMemo(() => jobs.filter((j) => isActive(j.status)).slice(0, 3), [jobs]);
-  const stats = useMemo(() => computeStats(library), [library]);
+  const today = useMemo(() => computeStats(library), [library]);
+  const stats = useStats();
+  const sum14 = stats.last14Days.reduce((n, d) => n + d.count, 0);
   const recent = library.slice(0, 5);
 
   const fetchNow = useCallback((url?: string) => {
@@ -269,7 +281,7 @@ export function HomePage({ phone }: { phone: boolean }) {
             >
               Use link
             </Button>
-            <IconButton icon="x" label="Dismiss" size={28} onClick={() => setClipLink(null)} />
+            <IconButton icon="x" label="Dismiss" size={phone ? 48 : 28} onClick={() => setClipLink(null)} />
           </div>
         </motion.div>
       )}
@@ -308,19 +320,25 @@ export function HomePage({ phone }: { phone: boolean }) {
             </pre>
           )}
           {error?.code !== "empty_url" && (
-            <div className="mt-2 flex gap-2">
-              <Button size="sm" variant="secondary" icon="retry" onClick={() => fetchNow()}>
+            <div className={`flex flex-wrap gap-2 ${phone ? "mt-3" : "mt-2"}`}>
+              <Button size={phone ? "lg" : "sm"} variant="secondary" icon="retry" onClick={() => fetchNow()}>
                 Try again
               </Button>
               {error?.cookiesHint && (
-                <Button size="sm" variant="ghost" onClick={() => navigate("settings")}>
+                <Button size={phone ? "lg" : "sm"} variant="ghost" onClick={() => navigate("settings")}>
                   Open Settings
                 </Button>
               )}
             </div>
           )}
         </div>
-        <IconButton icon="x" label="Dismiss" size={28} onClick={() => setHome({ error: null })} />
+        <IconButton
+          icon="x"
+          label="Dismiss"
+          size={phone ? 48 : 28}
+          className={phone ? "-mt-2 -mr-2" : ""}
+          onClick={() => setHome({ error: null })}
+        />
       </div>
     </motion.div>
   );
@@ -337,43 +355,69 @@ export function HomePage({ phone }: { phone: boolean }) {
     />
   );
 
-  const statTiles = [
-    { label: "Downloads today", value: String(stats.today), tint: true },
-    { label: "Total size", value: formatBytes(stats.totalBytes) },
-    { label: "Success rate", value: stats.successRate === null ? "-" : `${stats.successRate}%` },
-    { label: "Library items", value: String(stats.items) },
+  const statCards: { label: string; value: string; sub?: string; icon: IconName; tint?: boolean; shape: "leaf" | "drop" | "tab" }[] = [
+    { label: "Today", value: String(today.today), sub: `${today.items} completed in total`, icon: "bolt", tint: true, shape: "drop" },
+    { label: "Total downloads", value: String(stats.total), sub: "All library entries", icon: "download", shape: "leaf" },
+    {
+      label: "Success rate",
+      value: stats.successRate === null ? "-" : `${stats.successRate}%`,
+      sub: "Completed vs failed",
+      icon: "check",
+      shape: "tab",
+    },
+    { label: "Total size", value: formatBytes(stats.totalBytes), sub: "Completed files", icon: "database", shape: "leaf" },
   ];
+
+  const heart = info && !loading && <FavoriteHeart info={info} className="absolute top-3 right-3 z-10" size={phone ? 44 : 36} />;
 
   const enter = (i: number) => listItem(reduced, i);
 
-  // ---- Phone: single column, sticky paste bar, format picker in a bottom sheet ----
+  // ---- Phone: single column (16px gutter from <main>, 12px gaps), sticky paste bar,
+  // format picker in a centered modal ----
   if (phone) {
     return (
-      <div className="flex flex-col gap-3 pb-4">
-        <div className="sticky top-0 z-10 -mx-4 flex flex-col gap-2 bg-app px-4 pt-1 pb-2">
+      <div className="flex flex-col gap-3 pb-20">
+        {/* -mb-3 cancels the column gap so the bar's own 12px bottom padding is the gap. */}
+        <div className="sticky top-0 z-10 -mx-4 -mb-3 flex flex-col gap-3 bg-app px-4 pt-3 pb-3">
           {pasteBar}
           {notices}
         </div>
         {errorBlock}
-        <Card>
+        <Card className="relative !p-4">
+          {heart}
           <PreviewCard info={info} loading={loading} phone onOpenFormats={() => setSheet(true)} />
         </Card>
-        <Card title="Active downloads" action={<Link onClick={() => navigate("downloads")}>View all</Link>}>
+        <SourcesCard phone />
+        <Card
+          className="!p-4"
+          title="Active downloads"
+          action={<Link onClick={() => navigate("downloads")}>View all</Link>}
+        >
           {activeJobs.length === 0 ? (
-            <p className="py-4 text-center text-fg-2">Nothing downloading</p>
+            <p className="py-3 text-center text-fg-2">Nothing downloading</p>
           ) : (
-            activeJobs.map((j) => <DownloadRow key={j.id} job={j} compact phone />)
+            <div className="-mx-1.5 flex flex-col gap-1">
+              {activeJobs.map((j) => (
+                <DownloadRow key={j.id} job={j} compact phone />
+              ))}
+            </div>
           )}
         </Card>
         <div className="grid grid-cols-2 gap-3">
-          {statTiles.map((s) => (
-            <StatTile key={s.label} {...s} />
+          {statCards.map((s) => (
+            <StatCard key={s.label} {...s} className="min-h-[124px]" />
           ))}
         </div>
-        <RecentCard recent={recent} reduced={reduced} />
-        <SaveFolderCard saveDir={saveDir} platform={platform} />
+        <Card className="!p-4" title="Last 14 days" action={<span className="tabular text-[12px] text-fg-2">{sum14} downloads</span>}>
+          <ActivityChart days={stats.last14Days} height={110} />
+        </Card>
+        <Card className="!p-4" title="Categories">
+          <CategoryBars items={stats.byCategory} />
+        </Card>
+        <RecentCard recent={recent} reduced={reduced} className="!p-4" />
+        <SaveFolderCard saveDir={saveDir} platform={platform} phone />
         <Sheet open={sheet} onClose={() => setSheet(false)} title="Format">
-          <div className="flex min-h-[320px] flex-col">
+          <div className="flex min-h-[300px] flex-1 flex-col">
             <FormatPicker info={info} formats={formats} disabled={loading} onDownload={onDownload} fill />
           </div>
         </Sheet>
@@ -384,7 +428,7 @@ export function HomePage({ phone }: { phone: boolean }) {
 
   // ---- Desktop bento ----
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-4 pb-16">
       <Card className="h-[88px] justify-center !py-0" bodyClassName="justify-center">
         {pasteBar}
       </Card>
@@ -398,7 +442,8 @@ export function HomePage({ phone }: { phone: boolean }) {
           </Card>
         ) : (
           <>
-            <Card span={SPANS.preview} narrow={narrow}>
+            <Card span={SPANS.preview} narrow={narrow} className="relative">
+              {heart}
               <PreviewCard info={info} loading={loading} />
             </Card>
             <Card span={SPANS.picker} narrow={narrow} title="Format">
@@ -429,19 +474,30 @@ export function HomePage({ phone }: { phone: boolean }) {
         </Card>
 
         {narrow ? (
-          statTiles.map((s) => <StatTile key={s.label} {...s} span={SPANS.stat} narrow />)
+          statCards.map((s) => <StatCard key={s.label} {...s} style={spanStyle(SPANS.stat, true)} />)
         ) : (
-          <div
-            className="grid grid-cols-2 gap-4"
-            style={{ gridColumn: "span 4 / span 4", gridRow: "span 4 / span 4", gridAutoRows: "1fr" }}
-          >
-            {statTiles.map((s) => (
-              <StatTile key={s.label} {...s} />
+          <div className="grid grid-cols-2 gap-4" style={{ ...spanStyle(SPANS.stats, false), gridAutoRows: "1fr" }}>
+            {statCards.map((s) => (
+              <StatCard key={s.label} {...s} />
             ))}
           </div>
         )}
 
+        <Card
+          span={SPANS.activity}
+          narrow={narrow}
+          title="Last 14 days"
+          action={<span className="tabular text-[12px] text-fg-2">{sum14} downloads</span>}
+          bodyClassName="justify-end"
+        >
+          <ActivityChart days={stats.last14Days} height={150} />
+        </Card>
+        <Card span={SPANS.categories} narrow={narrow} title="Categories">
+          <CategoryBars items={stats.byCategory} />
+        </Card>
+
         <RecentCard recent={recent} reduced={reduced} span={SPANS.recent} narrow={narrow} />
+        <SourcesCard span={SPANS.sources} narrow={narrow} />
         <SaveFolderCard saveDir={saveDir} platform={platform} span={SPANS.folder} narrow={narrow} />
       </div>
       {fetchModal}
@@ -454,30 +510,150 @@ function Link({ onClick, children }: { onClick: () => void; children: string }) 
     <button
       type="button"
       onClick={onClick}
-      className="rounded-sm text-[12px] font-medium text-accent transition-[opacity,transform] duration-150 hover:underline active:scale-[0.97]"
+      // The ::before extends the hit area to 48px tall without changing the header layout.
+      className="relative rounded-sm text-[12px] font-medium text-accent transition-[opacity,transform] duration-150 before:absolute before:-inset-x-2 before:-inset-y-[16px] before:content-[''] hover:underline active:scale-[0.97]"
     >
       {children}
     </button>
   );
 }
 
-function StatTile({
-  label,
-  value,
-  tint,
-  span,
-  narrow,
-}: {
-  label: string;
-  value: string;
-  tint?: boolean;
-  span?: Span;
-  narrow?: boolean;
-}) {
+const HEART =
+  "M12 20s-7.5-4.6-9.2-9.3C1.7 7.6 3.8 4.5 7 4.5c2.1 0 3.6 1.2 5 3 1.4-1.8 2.9-3 5-3 3.2 0 5.3 3.1 4.2 6.2C19.5 15.4 12 20 12 20z";
+const BURST = [0, 60, 120, 180, 240, 300].map((a) => ({
+  a,
+  x: 20 + 15 * Math.cos((a * Math.PI) / 180),
+  y: 20 + 15 * Math.sin((a * Math.PI) / 180),
+}));
+
+/** Heart toggle on the preview: separate SVG layers (outline, fill, burst ring) animate independently. */
+function FavoriteHeart({ info, className = "", size = 36 }: { info: VideoInfo; className?: string; size?: number }) {
+  const on = useIsFavorite(favoriteIdOf(info));
+  const reduced = useReducedMotion();
   return (
-    <Card span={span} narrow={narrow} tint={tint} className="justify-between !p-4">
-      <div className={`text-[12px] font-medium ${tint ? "text-on-accent/85" : "text-fg-2"}`}>{label}</div>
-      <div className="tabular mt-auto text-[28px] leading-[34px] font-semibold tracking-[-0.02em]">{value}</div>
+    <motion.button
+      type="button"
+      aria-pressed={on}
+      aria-label={on ? "Remove from Favorites" : "Save to Favorites"}
+      title={on ? "Remove from Favorites" : "Save to Favorites"}
+      whileTap={{ scale: 0.84 }}
+      transition={t.press}
+      onClick={() => {
+        const added = toggleFavorite(favoriteFromInfo(info));
+        notify({
+          tone: added ? "success" : "info",
+          title: added ? "Saved to Favorites" : "Removed from Favorites",
+          body: info.title,
+          action: added ? { label: "View", run: () => navigate("favorites") } : undefined,
+        });
+      }}
+      style={{ width: size, height: size }}
+      className={`group/heart grid place-items-center rounded-full border border-line bg-card/90 text-accent shadow-card backdrop-blur transition-colors duration-150 hover:border-accent-border ${className}`}
+    >
+      <AnimatePresence>
+        {on && !reduced && (
+          <motion.svg
+            key="burst"
+            aria-hidden="true"
+            viewBox="0 0 40 40"
+            className="pointer-events-none absolute"
+            style={{ width: size + 16, height: size + 16 }}
+            initial={{ scale: 0.4, opacity: 0.9 }}
+            animate={{ scale: 1.15, opacity: 0 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.55, ease: "easeOut" }}
+          >
+            {BURST.map((p) => (
+              <circle key={p.a} cx={p.x} cy={p.y} r="1.6" fill="currentColor" />
+            ))}
+          </motion.svg>
+        )}
+      </AnimatePresence>
+      <svg
+        aria-hidden="true"
+        width="18"
+        height="18"
+        viewBox="0 0 24 24"
+        className="absolute transition-[scale] duration-200 group-hover/heart:scale-110"
+      >
+        <path d={HEART} fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinejoin="round" />
+      </svg>
+      <motion.svg
+        aria-hidden="true"
+        width="18"
+        height="18"
+        viewBox="0 0 24 24"
+        className="absolute"
+        initial={false}
+        animate={{ scale: on ? 1 : 0, opacity: on ? 1 : 0 }}
+        transition={{ type: "spring", stiffness: 520, damping: 16 }}
+      >
+        <path d={HEART} fill="currentColor" />
+      </motion.svg>
+    </motion.button>
+  );
+}
+
+/** Sources shortcut: stacked avatars of saved creators and a way in (the only entry on phones). */
+function SourcesCard({ span, narrow, phone }: { span?: Span; narrow?: boolean; phone?: boolean }) {
+  const sources = useSources();
+  const top = sources.slice(0, 4);
+  const count = sources.length;
+  return (
+    <Card
+      span={span}
+      narrow={narrow}
+      interactive
+      className={`glyph-host icon-host cursor-pointer ${phone ? "!p-4" : ""}`}
+      onClick={() => navigate("sources")}
+      bodyClassName="justify-center"
+      role="link"
+      tabIndex={0}
+      aria-label="Open Sources"
+      onKeyDown={(e) => {
+        if (e.key === "Enter" && e.target === e.currentTarget) navigate("sources");
+      }}
+    >
+      <div className="flex items-center gap-3">
+        <span className="text-accent">
+          <Glyph icon="sources" size={18} box={40} on />
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="text-[14px] font-semibold">Sources</div>
+          <div className="truncate text-[11px] text-fg-2">
+            {count === 0 ? "Save channels and profiles" : `${count} saved creator${count === 1 ? "" : "s"}`}
+          </div>
+        </div>
+        {top.length > 0 ? (
+          <div className="flex -space-x-2">
+            {top.map((s) => (
+              <span
+                key={s.id}
+                className="shape-pebble relative grid size-8 place-items-center overflow-hidden border-2 border-card bg-accent-soft text-[12px] font-semibold text-accent"
+                title={s.title}
+              >
+                {s.thumbnailUrl ? (
+                  <img src={s.thumbnailUrl} alt="" referrerPolicy="no-referrer" className="absolute inset-0 size-full object-cover" />
+                ) : (
+                  (s.title.trim()[0] ?? "?").toUpperCase()
+                )}
+              </span>
+            ))}
+          </div>
+        ) : (
+          <Button
+            size="sm"
+            icon="plus"
+            onClick={(e) => {
+              e.stopPropagation();
+              openAddLink("sources");
+            }}
+          >
+            Add
+          </Button>
+        )}
+        <Icon name="chevronRight" size={18} animated className="text-fg-3" />
+      </div>
     </Card>
   );
 }
@@ -487,16 +663,19 @@ function RecentCard({
   reduced,
   span,
   narrow,
+  className,
 }: {
   recent: ReturnType<typeof useLibrary>;
   reduced: boolean | null;
   span?: Span;
   narrow?: boolean;
+  className?: string;
 }) {
   return (
     <Card
       span={span}
       narrow={narrow}
+      className={className}
       title="Recent activity"
       action={<Link onClick={() => navigate("library")}>View all</Link>}
     >
@@ -534,15 +713,23 @@ function SaveFolderCard({
   platform,
   span,
   narrow,
+  phone,
 }: {
   saveDir: string;
   platform: string;
   span?: Span;
   narrow?: boolean;
+  phone?: boolean;
 }) {
   const oneRow = narrow && !!span;
   return (
-    <Card span={span} narrow={narrow} title={oneRow ? undefined : "Save folder"} bodyClassName="justify-center">
+    <Card
+      span={span}
+      narrow={narrow}
+      className={phone ? "!p-4" : ""}
+      title={oneRow ? undefined : "Save folder"}
+      bodyClassName="justify-center"
+    >
       <div className="flex items-center gap-3">
         <span className="grid size-9 shrink-0 place-items-center rounded-[12px_12px_12px_4px] bg-accent-soft text-accent">
           <Icon name="folder" size={18} />
@@ -551,7 +738,8 @@ function SaveFolderCard({
           {saveDir || (platform === "android" ? "App files folder" : "System Downloads folder")}
         </span>
         <Button
-          size="sm"
+          size={phone ? "lg" : "sm"}
+          className={phone ? "!px-4" : ""}
           onClick={async () => {
             const dir = await pickFolder(saveDir);
             if (dir) updateSettings({ saveDir: dir });

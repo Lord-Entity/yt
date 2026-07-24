@@ -22,10 +22,6 @@ export function useIsNarrowWindow(): boolean {
   return useMediaQuery("(max-width: 1079.98px)");
 }
 
-export function useIsTouch(): boolean {
-  return useMediaQuery("(pointer: coarse)");
-}
-
 /** Element width via ResizeObserver; bento uses content width < 760 for its narrow spans. */
 export function useWidth(ref: RefObject<HTMLElement | null>): number {
   const [w, setW] = useState(0);

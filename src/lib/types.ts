@@ -131,6 +131,8 @@ export interface DownloadProgress {
   /** Final file path (status "done"). On web: the suggested file name. */
   filePath?: string;
   error?: AppError;
+  /** Short status note on a final result, e.g. "Retried with cookies from Edge". */
+  note?: string;
 }
 
 export interface DownloadHandle {
@@ -148,6 +150,9 @@ export interface BinaryStatus {
   ffmpeg: BinaryState;
   ytdlpVersion?: string;
   ffmpegVersion?: string;
+  /** Desktop: Node.js for yt-dlp's YouTube challenge solver ("missing" = YouTube downloads fail). */
+  node?: BinaryState;
+  nodeVersion?: string;
 }
 
 export type AppErrorCode =
@@ -172,6 +177,7 @@ export type AppErrorCode =
   | "ssl"
   | "ffmpeg_missing"
   | "ytdlp_missing"
+  | "js_runtime_missing"
   | "no_formats"
   | "bad_folder"
   | "empty_url"
@@ -199,7 +205,8 @@ export const ERROR_TEXT: Record<AppErrorCode, string> = {
     "This site or link isn't supported by yt-dlp. Check that the URL points to a video or audio page, not a homepage or search page.",
   drm: "This video is DRM protected and can't be downloaded.",
   age_restricted: `This video is age restricted and needs a logged-in account. ${COOKIE_HINT}`,
-  bot_check: `The site wants you to prove you're not a bot. ${COOKIE_HINT}`,
+  bot_check:
+    "YouTube asked us to sign in. Open Settings > Cookies and choose the browser you're signed in to, then retry.",
   password: "This video is password protected, which isn't supported yet.",
   anti_bot: `The site blocked the request with an anti-bot check. ${COOKIE_HINT}`,
   ip_blocked: "The site is blocking your IP address. A different network or VPN may help.",
@@ -218,6 +225,7 @@ export const ERROR_TEXT: Record<AppErrorCode, string> = {
   ssl: "A secure connection (SSL) to the site failed. Check your connection, system clock, or any proxy/antivirus interfering.",
   ffmpeg_missing: "ffmpeg is missing. Merging and audio conversion won't work. Reinstall Keepsake.",
   ytdlp_missing: "yt-dlp is missing or damaged. Reinstall Keepsake.",
+  js_runtime_missing: "Install Node.js (https://nodejs.org) so YouTube downloads work.",
   no_formats: `No downloadable video was found on this page. If the video requires a login, ${COOKIE_HINT[0].toLowerCase()}${COOKIE_HINT.slice(1)}`,
   bad_folder: "Can't save to this folder. Choose another folder in Settings.",
   empty_url: "Paste a link first.",

@@ -1,47 +1,8 @@
 import type { ReactNode } from "react";
 import { Icon } from "./Icon";
 
-export function Select<T extends string>({
-  value,
-  options,
-  onChange,
-  label,
-  className = "",
-  disabled,
-  title,
-}: {
-  value: T;
-  options: { value: T; label: string }[];
-  onChange: (v: T) => void;
-  label: string;
-  className?: string;
-  disabled?: boolean;
-  title?: string;
-}) {
-  return (
-    <div className={`relative ${className}`}>
-      <select
-        aria-label={label}
-        title={title}
-        value={value}
-        disabled={disabled}
-        onChange={(e) => onChange(e.target.value as T)}
-        className="h-9 w-full appearance-none rounded-md border border-line bg-inset pr-8 pl-3 text-[12px] font-medium text-fg transition-colors duration-150 hover:border-line-strong disabled:opacity-45"
-      >
-        {options.map((o) => (
-          <option key={o.value} value={o.value}>
-            {o.label}
-          </option>
-        ))}
-      </select>
-      <Icon
-        name="chevronDown"
-        size={16}
-        className="pointer-events-none absolute top-1/2 right-2.5 -translate-y-1/2 text-fg-2"
-      />
-    </div>
-  );
-}
+/** Custom dropdown (Dropdown.tsx); re-exported here so existing imports keep working. */
+export { Select, type DropdownOption } from "./Dropdown";
 
 export function Stepper({
   value,
@@ -57,21 +18,21 @@ export function Stepper({
   label: string;
 }) {
   const btn =
-    "flex size-9 items-center justify-center text-fg-2 hover:text-fg disabled:opacity-45 disabled:pointer-events-none";
+    "icon-host flex size-9 items-center justify-center rounded-md text-fg-2 transition-[color,background-color,scale] duration-150 hover:bg-card-hover hover:text-fg active:scale-[0.92] disabled:opacity-45 disabled:pointer-events-none";
   return (
     <div
       role="group"
       aria-label={label}
-      className="inline-flex h-9 items-center rounded-md border border-line bg-inset"
+      className="inline-flex h-9 items-center rounded-[12px_12px_12px_5px] border border-line bg-inset shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]"
     >
       <button type="button" className={btn} aria-label="Decrease" disabled={value <= min} onClick={() => onChange(value - 1)}>
-        <Icon name="minus" size={16} />
+        <Icon name="minus" size={16} animated />
       </button>
       <span className="tabular w-8 text-center text-[13px] font-semibold" aria-live="polite">
         {value}
       </span>
       <button type="button" className={btn} aria-label="Increase" disabled={value >= max} onClick={() => onChange(value + 1)}>
-        <Icon name="plus" size={16} />
+        <Icon name="plus" size={16} animated />
       </button>
     </div>
   );
@@ -88,12 +49,13 @@ export function FieldRow({
   children: ReactNode;
 }) {
   return (
-    <div className="flex min-h-12 items-center justify-between gap-4 border-b border-line py-2 last:border-b-0">
-      <div className="min-w-0">
+    // Wraps the control under the label when both cannot fit (phones, narrow windows).
+    <div className="flex min-h-12 flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-line py-2 last:border-b-0">
+      <div className="min-w-0 flex-1 basis-40">
         <div className="text-[13px] font-medium">{label}</div>
         {hint && <div className="text-[11px] leading-[14px] text-fg-2">{hint}</div>}
       </div>
-      <div className="flex shrink-0 items-center gap-2">{children}</div>
+      <div className="flex max-w-full min-w-0 shrink-0 items-center gap-2">{children}</div>
     </div>
   );
 }

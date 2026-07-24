@@ -1,9 +1,12 @@
-import { AnimatePresence, motion, useReducedMotion } from "motion/react";
-import { useEffect, type ReactNode } from "react";
+import type { ReactNode } from "react";
+import { Dialog } from "./Dialog";
 import { Icon, type IconName } from "./Icon";
-import { t } from "./motion";
 
-/** Bottom sheet for phones (UI_MOBILE.md): spring slide, fade under reduced motion. */
+/**
+ * Phone overlay (UI_MOBILE.md). No bottom sheets: this is a centered modal with a
+ * 16px gutter, max 85vh, internal scroll, spring entrance, Esc / backdrop close.
+ * Name kept so existing imports (Home, DownloadRow, LibraryList) stay valid.
+ */
 export function Sheet({
   open,
   onClose,
@@ -15,41 +18,10 @@ export function Sheet({
   title?: string;
   children: ReactNode;
 }) {
-  const reduced = useReducedMotion();
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [open, onClose]);
   return (
-    <AnimatePresence>
-      {open && (
-        <motion.div
-          className="fixed inset-0 z-50 flex items-end bg-black/50"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          transition={t.fast}
-          onMouseDown={(e) => e.target === e.currentTarget && onClose()}
-        >
-          <motion.div
-            role="dialog"
-            aria-modal="true"
-            aria-label={title}
-            initial={reduced ? { opacity: 0 } : { y: "100%" }}
-            animate={reduced ? { opacity: 1 } : { y: 0 }}
-            exit={reduced ? { opacity: 0 } : { y: "100%" }}
-            transition={reduced ? t.fast : t.sheet}
-            className="safe-bottom flex max-h-[85vh] w-full flex-col rounded-t-[18px] border-t border-line bg-card shadow-pop"
-          >
-            <div className="mx-auto mt-2 h-1 w-10 rounded-full bg-line-strong" />
-            {title && <h2 className="px-4 pt-3 text-[15px] font-semibold">{title}</h2>}
-            <div className="flex min-h-0 flex-1 flex-col p-4">{children}</div>
-          </motion.div>
-        </motion.div>
-      )}
-    </AnimatePresence>
+    <Dialog open={open} onClose={onClose} title={title ?? "Options"} phone bodyClassName="flex flex-col">
+      {children}
+    </Dialog>
   );
 }
 
@@ -61,6 +33,7 @@ export interface SheetAction {
   disabled?: boolean;
 }
 
+/** Centered list of actions: 48px rows with 20px icons. */
 export function ActionSheet({
   open,
   onClose,
@@ -74,19 +47,22 @@ export function ActionSheet({
 }) {
   return (
     <Sheet open={open} onClose={onClose} title={title}>
-      <div className="flex flex-col">
+      <div className="-mx-2 flex flex-col gap-1" role="menu">
         {actions.map((a) => (
           <button
             key={a.label}
             type="button"
+            role="menuitem"
             disabled={a.disabled}
             onClick={() => {
               onClose();
               a.onSelect();
             }}
-            className={`flex h-12 items-center gap-3 rounded-md px-2 text-[14px] disabled:opacity-45 ${a.danger ? "text-danger" : "text-fg"} active:bg-accent-soft`}
+            className={`flex min-h-12 w-full shrink-0 items-center gap-3 rounded-md px-3 text-left text-[14px] font-medium transition-colors duration-150 outline-offset-[-2px] disabled:opacity-45 ${
+              a.danger ? "text-danger active:bg-danger/10" : "text-fg active:bg-accent-soft"
+            } hover:bg-card-hover`}
           >
-            <Icon name={a.icon} size={20} />
+            <Icon name={a.icon} size={20} className={a.danger ? "" : "text-fg-2"} />
             {a.label}
           </button>
         ))}
