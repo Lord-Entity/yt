@@ -1,0 +1,226 @@
+@import "tailwindcss";
+@custom-variant dark (&:where([data-theme=dark], [data-theme=dark] *));
+
+/* Tokens from UI_THEME_MOTION.md section 1. Dark is the default palette. */
+:root,
+[data-theme="dark"] {
+  --bg-app: #0b0908;
+  --bg-sidebar: #0f0e0d;
+  --bg-card: #151413;
+  --bg-card-hover: #1a1817;
+  --bg-inset: #1d1b1a;
+  --bg-card-tint: #3a1f1a;
+  --bg-card-tint-strong: #a94a37;
+  --border: #262322;
+  --border-strong: #3a3533;
+  --text-primary: #f2f0ef;
+  --text-secondary: #8f8a88;
+  --text-muted: #5e5957;
+  --accent: #e0634c;
+  --accent-hover: #ea735c;
+  --accent-active: #c8533e;
+  --accent-fg: #ffffff;
+  --accent-soft: rgba(224, 99, 76, 0.16);
+  --accent-border: rgba(224, 99, 76, 0.45);
+  --success: #4fbf8a;
+  --warning: #e8a94a;
+  --danger: #e5484d;
+  --focus-ring: #f08a75;
+  --chart-1: #e0634c;
+  --chart-2: #f09b86;
+  --chart-3: #883430;
+  --chart-4: #e3c3b9;
+  --shadow-card: 0 1px 0 rgba(255, 255, 255, 0.03) inset, 0 8px 24px rgba(0, 0, 0, 0.35);
+  --shadow-lift: 0 1px 0 rgba(255, 255, 255, 0.04) inset, 0 14px 32px rgba(0, 0, 0, 0.5);
+  --shadow-pop: 0 16px 48px rgba(0, 0, 0, 0.6);
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 18px;
+  --radius-pill: 999px;
+  --font-ui: system-ui, -apple-system, "Segoe UI Variable Text", "Segoe UI", "Cantarell", "Ubuntu",
+    "Noto Sans", "Helvetica Neue", Arial, sans-serif;
+  --font-code: ui-monospace, "Cascadia Mono", "SF Mono", Menlo, Consolas, "DejaVu Sans Mono",
+    monospace;
+  color-scheme: dark;
+}
+
+[data-theme="light"] {
+  --bg-app: #f6f6f7;
+  --bg-sidebar: #eeedec;
+  --bg-card: #ffffff;
+  --bg-card-hover: #ffffff;
+  --bg-inset: #f3f1f0;
+  --bg-card-tint: #fbe7e2;
+  --bg-card-tint-strong: #e0634c;
+  --border: #e4e1df;
+  --border-strong: #cfcac7;
+  --text-primary: #181615;
+  --text-secondary: #6a6461;
+  --text-muted: #9a9491;
+  --accent: #e0634c;
+  --accent-hover: #d45740;
+  --accent-active: #bf4b36;
+  --accent-fg: #ffffff;
+  --accent-soft: rgba(224, 99, 76, 0.12);
+  --accent-border: rgba(224, 99, 76, 0.5);
+  --success: #1f9d63;
+  --warning: #b97812;
+  --danger: #d93036;
+  --focus-ring: #c8533e;
+  --shadow-card: 0 1px 2px rgba(24, 22, 21, 0.06), 0 4px 12px rgba(24, 22, 21, 0.04);
+  --shadow-lift: 0 2px 4px rgba(24, 22, 21, 0.06), 0 12px 28px rgba(24, 22, 21, 0.1);
+  --shadow-pop: 0 16px 48px rgba(24, 22, 21, 0.18);
+  color-scheme: light;
+}
+
+@theme inline {
+  --color-app: var(--bg-app);
+  --color-sidebar: var(--bg-sidebar);
+  --color-card: var(--bg-card);
+  --color-card-hover: var(--bg-card-hover);
+  --color-inset: var(--bg-inset);
+  --color-tint: var(--bg-card-tint);
+  --color-tint-strong: var(--bg-card-tint-strong);
+  --color-line: var(--border);
+  --color-line-strong: var(--border-strong);
+  --color-fg: var(--text-primary);
+  --color-fg-2: var(--text-secondary);
+  --color-fg-3: var(--text-muted);
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-active: var(--accent-active);
+  --color-on-accent: var(--accent-fg);
+  --color-accent-soft: var(--accent-soft);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-danger: var(--danger);
+  --color-ring: var(--focus-ring);
+  --radius-sm: var(--radius-sm);
+  --radius-md: var(--radius-md);
+  --radius-lg: var(--radius-lg);
+  --shadow-card: var(--shadow-card);
+  --shadow-lift: var(--shadow-lift);
+  --shadow-pop: var(--shadow-pop);
+  --font-sans: var(--font-ui);
+  --font-mono: var(--font-code);
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+html {
+  background: var(--bg-app);
+}
+
+body {
+  margin: 0;
+  background: var(--bg-app);
+  color: var(--text-primary);
+  font-family: var(--font-ui);
+  font-size: 13px;
+  line-height: 20px;
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+  user-select: none;
+}
+
+input,
+textarea,
+.selectable {
+  user-select: text;
+}
+
+:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Card hover brightening runs as a CSS transition, never per frame. */
+.card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+  transition:
+    border-color 180ms,
+    box-shadow 180ms;
+}
+.card-interactive:hover {
+  border-color: var(--border-strong);
+  box-shadow: var(--shadow-lift);
+}
+.card-tint {
+  background: var(--bg-card-tint-strong);
+  color: var(--accent-fg);
+  border-color: transparent;
+}
+.card-tint:hover {
+  border-color: var(--accent-border);
+}
+
+.bento {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  grid-auto-rows: 88px;
+  gap: 16px;
+}
+
+.skeleton {
+  background: linear-gradient(90deg, var(--bg-inset) 0%, var(--border) 50%, var(--bg-inset) 100%);
+  background-size: 200% 100%;
+  animation: shimmer 1.2s linear infinite;
+  border-radius: var(--radius-sm);
+}
+@keyframes shimmer {
+  from {
+    background-position: 200% 0;
+  }
+  to {
+    background-position: -200% 0;
+  }
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.spinner {
+  width: 14px;
+  height: 14px;
+  border-radius: 999px;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  animation: spin 0.7s linear infinite;
+}
+
+.scroll-y {
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
+}
+
+.no-scrollbar {
+  scrollbar-width: none;
+}
+
+.safe-bottom {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+.safe-top {
+  padding-top: env(safe-area-inset-top);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition-duration: 0ms !important;
+    animation-duration: 0ms !important;
+  }
+}

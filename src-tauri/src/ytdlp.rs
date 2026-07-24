@@ -1,0 +1,521 @@
+//! Thin launcher for the bundled yt-dlp sidecar (desktop only).
+//!
+//! The TypeScript engine (src/engine/ytdlp.ts) builds the argument list. Rust
+//! checks it against a fixed allow-list, checks the URL after `--` is http(s),
+//! prepends the fixed flags, spawns the process, streams output lines over a
+//! `Channel`, resolves with the exit code, and kills the process tree on
+//! request. The webview has no `shell:*` permission.
+//!
+//! JS contract:
+//!   invoke<number>("run_ytdlp", { jobId, args, tempDir, onEvent })  // resolves with exit code (-1 = killed by signal)
+//!   onEvent messages: { event: "stdout" | "stderr", line: string }
+//!   invoke<void>("cancel_ytdlp", { jobId })
+//!   invoke<{ ytdlp: string | null, ffmpeg: string | null, node: string | null }>("binary_status")
+#![cfg_attr(mobile, allow(dead_code, unused))]
+
+use serde::Serialize;
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
+use std::sync::Mutex;
+use tauri::{ipc::Channel, AppHandle, Manager};
+
+/// Running jobs: job id -> process id.
+#[derive(Default)]
+pub struct Jobs(Mutex<HashMap<String, u32>>);
+
+#[derive(Clone, Serialize)]
+#[serde(tag = "event", rename_all = "camelCase")]
+pub enum YtdlpEvent {
+    Stdout { line: String },
+    Stderr { line: String },
+}
+
+#[derive(Serialize)]
+pub struct BinaryVersions {
+    ytdlp: Option<String>,
+    ffmpeg: Option<String>,
+    node: Option<String>,
+}
+
+/// Flags the TypeScript side may pass that take no value.
+const FLAGS_NO_VALUE: &[&str] = &[
+    "--version",
+    "--ignore-config",
+    "--newline",
+    "-J",
+    "--dump-single-json",
+    "-j",
+    "--dump-json",
+    "-i",
+    "--ignore-errors",
+    "--abort-on-error",
+    "--no-playlist",
+    "--yes-playlist",
+    "--flat-playlist",
+    "--progress",
+    "--no-progress",
+    "--quiet",
+    "-q",
+    "--no-warnings",
+    "--verbose",
+    "--simulate",
+    "-s",
+    "--skip-download",
+    "--windows-filenames",
+    "--restrict-filenames",
+    "--no-part",
+    "--no-mtime",
+    "--no-overwrites",
+    "--force-overwrites",
+    "--continue",
+    "--no-continue",
+    "-x",
+    "--extract-audio",
+    "--keep-video",
+    "--embed-thumbnail",
+    "--no-embed-thumbnail",
+    "--embed-metadata",
+    "--add-metadata",
+    "--embed-subs",
+    "--write-thumbnail",
+    "--write-subs",
+    "--write-auto-subs",
+    "--no-cache-dir",
+    "--list-extractors",
+    "--no-color",
+];
+
+/// Flags the TypeScript side may pass that take exactly one value (the next argument).
+const FLAGS_WITH_VALUE: &[&str] = &[
+    "--encoding",
+    "--js-runtimes",
+    "-f",
+    "--format",
+    "-S",
+    "--format-sort",
+    "--merge-output-format",
+    "--remux-video",
+    "--recode-video",
+    "--audio-format",
+    "--audio-quality",
+    "-o",
+    "--output",
+    "-P",
+    "--paths",
+    "--trim-filenames",
+    "--progress-template",
+    "--print",
+    "-O",
+    "--convert-thumbnails",
+    "--sub-langs",
+    "--sub-format",
+    "--convert-subs",
+    "-I",
+    "--playlist-items",
+    "-r",
+    "--limit-rate",
+    "-R",
+    "--retries",
+    "--fragment-retries",
+    "-N",
+    "--concurrent-fragments",
+    "--socket-timeout",
+    "--cookies",
+    "--cookies-from-browser",
+    "--extractor-args",
+    "--proxy",
+];
+
+fn validate_job_id(id: &str) -> Result<(), String> {
+    let ok = !id.is_empty()
+        && id.len() <= 80
+        && id
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_');
+    if ok {
+        Ok(())
+    } else {
+        Err("jobId must be 1-80 characters of A-Z a-z 0-9 - _".into())
+    }
+}
+
+fn validate_url(u: &str) -> Result<(), String> {
+    let parsed = tauri::Url::parse(u).map_err(|_| format!("invalid URL: {u}"))?;
+    match parsed.scheme() {
+        "http" | "https" if parsed.host_str().is_some_and(|h| !h.is_empty()) => Ok(()),
+        _ => Err("only http and https URLs are allowed".into()),
+    }
+}
+
+/// Options must come from the allow-list. A `--` may appear once and must be
+/// followed by exactly one http(s) URL.
+fn validate_args(args: &[String]) -> Result<(), String> {
+    let mut i = 0;
+    while i < args.len() {
+        let a = args[i].as_str();
+        if a == "--" {
+            return match &args[i + 1..] {
+                [url] => validate_url(url),
+                _ => Err("exactly one URL must follow --".into()),
+            };
+        } else if FLAGS_NO_VALUE.contains(&a) {
+            i += 1;
+        } else if FLAGS_WITH_VALUE.contains(&a) {
+            let Some(v) = args.get(i + 1) else {
+                return Err(format!("yt-dlp flag {a} needs a value"));
+            };
+            if a == "--js-runtimes" && v != "node" {
+                return Err("only --js-runtimes node is allowed".into());
+            }
+            i += 2;
+        } else {
+            return Err(format!("yt-dlp argument not allowed: {a}"));
+        }
+    }
+    Ok(())
+}
+
+/// Only `<anything>/.fetchly-tmp/<jobId>` may be deleted after a run.
+fn temp_dir_for_job(temp_dir: &str, job_id: &str) -> Option<PathBuf> {
+    let p = PathBuf::from(temp_dir);
+    let ok = p.is_absolute()
+        && !p
+            .components()
+            .any(|c| matches!(c, std::path::Component::ParentDir))
+        && p.file_name().is_some_and(|n| n == job_id)
+        && p.parent()
+            .and_then(Path::file_name)
+            .is_some_and(|n| n == ".fetchly-tmp");
+    ok.then_some(p)
+}
+
+/// Folder that holds the sidecars. Tauri places `externalBin` files next to the
+/// main executable in installed apps, and tauri-build copies them next to the
+/// dev binary in `target/<profile>/`, without the target-triple suffix.
+fn sidecar_dir() -> Result<PathBuf, String> {
+    let exe = std::env::current_exe().map_err(|e| e.to_string())?;
+    exe.parent()
+        .map(Path::to_path_buf)
+        .ok_or_else(|| "cannot resolve the app folder".into())
+}
+
+fn exe_name(name: &str) -> String {
+    if cfg!(windows) {
+        format!("{name}.exe")
+    } else {
+        name.to_string()
+    }
+}
+
+fn quiet_command(program: impl AsRef<std::ffi::OsStr>) -> std::process::Command {
+    let mut cmd = std::process::Command::new(program);
+    cmd.stdin(std::process::Stdio::null());
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+    cmd
+}
+
+/// Kill yt-dlp and its children (ffmpeg) so no orphan keeps writing files.
+fn kill_tree(pid: u32) {
+    use std::process::Stdio;
+    #[cfg(windows)]
+    let mut cmd = {
+        let mut c = quiet_command("taskkill");
+        c.args(["/PID", &pid.to_string(), "/T", "/F"]);
+        c
+    };
+    #[cfg(unix)]
+    let mut cmd = {
+        // The child was started in its own process group (pgid == pid).
+        let mut c = quiet_command("kill");
+        c.args(["-KILL", "--", &format!("-{pid}")]);
+        c
+    };
+    let _ = cmd.stdout(Stdio::null()).stderr(Stdio::null()).status();
+}
+
+fn pump<R: std::io::Read>(r: R, ch: &Channel<YtdlpEvent>, is_err: bool) {
+    use std::io::BufRead;
+    let mut reader = std::io::BufReader::new(r);
+    let mut buf = Vec::new();
+    loop {
+        buf.clear();
+        match reader.read_until(b'\n', &mut buf) {
+            Ok(0) | Err(_) => break,
+            Ok(_) => {
+                let line = String::from_utf8_lossy(&buf)
+                    .trim_end_matches(['\r', '\n'])
+                    .to_string();
+                let ev = if is_err {
+                    YtdlpEvent::Stderr { line }
+                } else {
+                    YtdlpEvent::Stdout { line }
+                };
+                let _ = ch.send(ev);
+            }
+        }
+    }
+}
+
+fn remove_dir_with_retries(dir: &Path) {
+    for _ in 0..5 {
+        if !dir.exists() || std::fs::remove_dir_all(dir).is_ok() {
+            return;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(400));
+    }
+}
+
+#[cfg(desktop)]
+fn run_blocking(
+    app: AppHandle,
+    job_id: String,
+    args: Vec<String>,
+    temp_dir: Option<PathBuf>,
+    on_event: Channel<YtdlpEvent>,
+) -> Result<i32, String> {
+    use std::process::Stdio;
+
+    let dir = sidecar_dir()?;
+    let ytdlp = dir.join(exe_name("yt-dlp"));
+    if !ytdlp.is_file() {
+        return Err(format!("yt-dlp not found at {}", ytdlp.display()));
+    }
+
+    let mut cmd = quiet_command(&ytdlp);
+    cmd.args([
+        "--ignore-config",
+        "--no-plugin-dirs",
+        "--no-js-runtimes",
+        "--js-runtimes",
+        "node",
+        "--ffmpeg-location",
+    ])
+    .arg(&dir)
+    .args(&args)
+    .env("PYTHONIOENCODING", "utf-8")
+    .env("PYTHONUNBUFFERED", "1")
+    .stdout(Stdio::piped())
+    .stderr(Stdio::piped());
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        cmd.process_group(0);
+    }
+
+    let mut child = {
+        let jobs = app.state::<Jobs>();
+        let mut map = jobs.0.lock().map_err(|_| "job table poisoned")?;
+        if map.contains_key(&job_id) {
+            return Err(format!("job {job_id} is already running"));
+        }
+        if let Some(t) = &temp_dir {
+            // Marker lets a startup sweep recognise folders Fetchly created.
+            std::fs::create_dir_all(t).map_err(|e| format!("cannot create temp folder: {e}"))?;
+            let _ = std::fs::write(t.join(".fetchly-job"), &job_id);
+        }
+        let child = cmd.spawn().map_err(|e| {
+            if let Some(t) = &temp_dir {
+                let _ = std::fs::remove_dir_all(t);
+            }
+            format!("could not start yt-dlp: {e}")
+        })?;
+        map.insert(job_id.clone(), child.id());
+        child
+    };
+
+    let stderr = child.stderr.take();
+    let err_ch = on_event.clone();
+    let err_thread = std::thread::spawn(move || {
+        if let Some(s) = stderr {
+            pump(s, &err_ch, true);
+        }
+    });
+    if let Some(s) = child.stdout.take() {
+        pump(s, &on_event, false);
+    }
+    let _ = err_thread.join();
+    let status = child.wait();
+    if let Ok(mut map) = app.state::<Jobs>().0.lock() {
+        map.remove(&job_id);
+    }
+    // The process tree is gone; only now delete this job's temp folder.
+    if let Some(t) = temp_dir {
+        remove_dir_with_retries(&t);
+    }
+    let status = status.map_err(|e| e.to_string())?;
+    Ok(status.code().unwrap_or(-1))
+}
+
+/// Run yt-dlp to completion, streaming lines to `on_event`. Resolves with the exit code.
+/// `temp_dir`, when given, must be `<abs path>/.fetchly-tmp/<jobId>`; it is deleted after exit.
+#[tauri::command]
+pub async fn run_ytdlp(
+    app: AppHandle,
+    job_id: String,
+    args: Vec<String>,
+    temp_dir: Option<String>,
+    on_event: Channel<YtdlpEvent>,
+) -> Result<i32, String> {
+    validate_job_id(&job_id)?;
+    validate_args(&args)?;
+    let temp = match temp_dir.as_deref() {
+        Some(t) => Some(
+            temp_dir_for_job(t, &job_id)
+                .ok_or("tempDir must be an absolute path ending in .fetchly-tmp/<jobId>")?,
+        ),
+        None => None,
+    };
+    #[cfg(mobile)]
+    {
+        return Err("yt-dlp is not available on this platform".into());
+    }
+    #[cfg(desktop)]
+    return tauri::async_runtime::spawn_blocking(move || {
+        run_blocking(app, job_id, args, temp, on_event)
+    })
+    .await
+    .map_err(|e| e.to_string())?;
+}
+
+/// Kill a running job and its children. No-op if the job is unknown.
+/// The pending `run_ytdlp` call then resolves with the exit code.
+#[tauri::command]
+pub async fn cancel_ytdlp(app: AppHandle, job_id: String) -> Result<(), String> {
+    let pid = app
+        .state::<Jobs>()
+        .0
+        .lock()
+        .map_err(|_| "job table poisoned")?
+        .get(&job_id)
+        .copied();
+    if let Some(pid) = pid {
+        tauri::async_runtime::spawn_blocking(move || kill_tree(pid))
+            .await
+            .map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+fn first_line(program: &Path, arg: &str) -> Option<String> {
+    let out = quiet_command(program)
+        .arg(arg)
+        .stderr(std::process::Stdio::null())
+        .output()
+        .ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    String::from_utf8_lossy(&out.stdout)
+        .lines()
+        .next()
+        .map(|l| l.trim().to_string())
+        .filter(|l| !l.is_empty())
+}
+
+/// Versions of the bundled sidecars and of `node` on PATH (null = missing or broken).
+#[tauri::command]
+pub async fn binary_status() -> Result<BinaryVersions, String> {
+    if cfg!(mobile) {
+        return Ok(BinaryVersions {
+            ytdlp: None,
+            ffmpeg: None,
+            node: None,
+        });
+    }
+    tauri::async_runtime::spawn_blocking(|| {
+        let dir = sidecar_dir().unwrap_or_default();
+        BinaryVersions {
+            ytdlp: first_line(&dir.join(exe_name("yt-dlp")), "--version"),
+            ffmpeg: first_line(&dir.join(exe_name("ffmpeg")), "-version"),
+            node: first_line(Path::new("node"), "--version"),
+        }
+    })
+    .await
+    .map_err(|e| e.to_string())
+}
+
+/// Called on app exit: kill every running yt-dlp tree.
+pub fn kill_all(app: &AppHandle) {
+    let pids: Vec<u32> = match app.state::<Jobs>().0.lock() {
+        Ok(map) => map.values().copied().collect(),
+        Err(_) => return,
+    };
+    for pid in pids {
+        kill_tree(pid);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn s(v: &[&str]) -> Vec<String> {
+        v.iter().map(|x| x.to_string()).collect()
+    }
+
+    #[test]
+    fn allows_engine_args() {
+        let a = s(&[
+            "--ignore-config",
+            "--encoding",
+            "utf-8",
+            "--js-runtimes",
+            "node",
+            "--no-warnings",
+            "-J",
+            "-i",
+            "--flat-playlist",
+            "--",
+            "https://www.youtube.com/watch?v=abc",
+        ]);
+        assert!(validate_args(&a).is_ok());
+        assert!(validate_args(&s(&["--version"])).is_ok());
+    }
+
+    #[test]
+    fn rejects_bad_args() {
+        assert!(validate_args(&s(&["--exec", "calc"])).is_err());
+        assert!(validate_args(&s(&["--ffmpeg-location", "/tmp"])).is_err());
+        assert!(validate_args(&s(&["--js-runtimes", "deno"])).is_err());
+        assert!(validate_args(&s(&["https://x.y"])).is_err());
+        assert!(validate_args(&s(&["-f"])).is_err());
+        assert!(validate_args(&s(&["--", "file:///etc/passwd"])).is_err());
+        assert!(validate_args(&s(&["--", "https://a.b", "https://c.d"])).is_err());
+        assert!(validate_args(&s(&["--"])).is_err());
+    }
+
+    #[test]
+    fn url_scheme() {
+        assert!(validate_url("https://www.youtube.com/watch?v=abc").is_ok());
+        assert!(validate_url("http://example.com").is_ok());
+        assert!(validate_url("javascript:alert(1)").is_err());
+        assert!(validate_url("--exec").is_err());
+    }
+
+    #[test]
+    fn temp_dir_rule() {
+        let base = if cfg!(windows) {
+            "C:\\Users\\u\\Downloads"
+        } else {
+            "/home/u/Downloads"
+        };
+        let sep = std::path::MAIN_SEPARATOR;
+        let good = format!("{base}{sep}.fetchly-tmp{sep}job1");
+        assert!(temp_dir_for_job(&good, "job1").is_some());
+        assert!(temp_dir_for_job(&good, "job2").is_none());
+        assert!(temp_dir_for_job(base, "job1").is_none());
+        assert!(temp_dir_for_job(".fetchly-tmp/job1", "job1").is_none());
+    }
+
+    #[test]
+    fn job_ids() {
+        assert!(validate_job_id("info-3f2a").is_ok());
+        assert!(validate_job_id("").is_err());
+        assert!(validate_job_id("../x").is_err());
+    }
+}

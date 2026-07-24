@@ -1,0 +1,171 @@
+# Builds Fetchly for Windows (nsis, msi), Linux (deb, rpm, AppImage) and Android (debug APK)
+# and uploads each as a workflow artifact. See README.md / BUILD.md.
+# Assumes the repository root is the `fetchly` folder. If fetchly is a subfolder of the
+# repo, move this file to <repo>/.github/workflows/ and set FETCHLY_DIR: fetchly.
+name: build
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+env:
+  FETCHLY_DIR: .
+  BUN_VERSION: "1.4.4" # same as the local dev machine
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: pwsh
+        working-directory: ${{ env.FETCHLY_DIR }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      # Sidecar names must match the host triple Tauri sees.
+      - name: Use the MSVC toolchain
+        run: |
+          rustup default stable-x86_64-pc-windows-msvc
+          $hostTriple = (rustc -vV | Select-String '^host: ').ToString().Substring(6).Trim()
+          Write-Host "rustc host: $hostTriple"
+          if ($hostTriple -ne 'x86_64-pc-windows-msvc') { throw "expected msvc host, got $hostTriple" }
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: ${{ env.FETCHLY_DIR }}/src-tauri -> target
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Fetch sidecars (yt-dlp, ffmpeg, ffprobe)
+        run: ./scripts/fetch-binaries.ps1 -Triple x86_64-pc-windows-msvc
+
+      - run: bun install --frozen-lockfile
+
+      - name: Build installers (nsis, msi)
+        run: bun run build:windows
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: fetchly-windows-nsis
+          path: ${{ env.FETCHLY_DIR }}/src-tauri/target/release/bundle/nsis/*.exe
+          if-no-files-found: error
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: fetchly-windows-msi
+          path: ${{ env.FETCHLY_DIR }}/src-tauri/target/release/bundle/msi/*.msi
+          if-no-files-found: error
+
+  linux:
+    runs-on: ubuntu-22.04
+    defaults:
+      run:
+        shell: bash
+        working-directory: ${{ env.FETCHLY_DIR }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Linux system packages (Tauri v2 prerequisites)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file \
+            libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev patchelf xz-utils
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: ${{ env.FETCHLY_DIR }}/src-tauri -> target
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Fetch sidecars (yt-dlp, ffmpeg, ffprobe)
+        run: bash scripts/fetch-binaries.sh x86_64-unknown-linux-gnu
+
+      - run: bun install --frozen-lockfile
+
+      - name: Build packages (deb, rpm, AppImage)
+        run: bun run build:linux
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: fetchly-linux-deb
+          path: ${{ env.FETCHLY_DIR }}/src-tauri/target/release/bundle/deb/*.deb
+          if-no-files-found: error
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: fetchly-linux-rpm
+          path: ${{ env.FETCHLY_DIR }}/src-tauri/target/release/bundle/rpm/*.rpm
+          if-no-files-found: error
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: fetchly-linux-appimage
+          path: ${{ env.FETCHLY_DIR }}/src-tauri/target/release/bundle/appimage/*.AppImage
+          if-no-files-found: error
+
+  # No fetch-binaries here: tauri.android.conf.json sets "externalBin": [] (no sidecars).
+  android:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+        working-directory: ${{ env.FETCHLY_DIR }}
+    env:
+      NDK_VERSION: "27.2.12479018"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Install Android platform, build tools and NDK
+        run: |
+          sdkmanager --install "ndk;$NDK_VERSION" "platform-tools" "build-tools;34.0.0" "platforms;android-34"
+          echo "NDK_HOME=$ANDROID_HOME/ndk/$NDK_VERSION" >> "$GITHUB_ENV"
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust Android targets
+        run: rustup target add aarch64-linux-android armv7-linux-androideabi i686-linux-android x86_64-linux-android
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: ${{ env.FETCHLY_DIR }}/src-tauri -> target
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - run: bun install --frozen-lockfile
+
+      # src-tauri/gen is git-ignored, so the Android project is generated on every run.
+      - name: tauri android init
+        run: bun run android:init --ci
+
+      # build:android is `tauri android build --apk`; --debug makes it a debug-signed APK
+      # that installs directly on a phone. Release signing: see BUILD.md.
+      - name: Build debug APK
+        run: bun run build:android --debug --ci
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: fetchly-android-apk
+          path: ${{ env.FETCHLY_DIR }}/src-tauri/gen/android/app/build/outputs/apk/**/*.apk
+          if-no-files-found: error
