@@ -143,8 +143,12 @@ jobs:
           if [ ! -x "$SDKMANAGER" ]; then SDKMANAGER="$(command -v sdkmanager)"; fi
           echo "Using $SDKMANAGER"
           yes | "$SDKMANAGER" --licenses > /dev/null || true
-          # Must match the generated Gradle project: Tauri CLI 2.12 writes compileSdk = 37 / targetSdk = 37.
-          "$SDKMANAGER" --install "platform-tools" "build-tools;37.0.0" "platforms;android-37" "ndk;$NDK_VERSION"
+          # The preinstalled cmdline-tools is too old to see new platforms. Update it first.
+          "$SDKMANAGER" --install "cmdline-tools;latest" || true
+          SDKMANAGER="$SDK/cmdline-tools/latest/bin/sdkmanager"
+          # API 37+ packages use a minor version (android-37.0). Must match the generated Gradle
+          # project: Tauri CLI 2.12 writes compileSdk = 37 / targetSdk = 37.
+          "$SDKMANAGER" --install "platform-tools" "build-tools;37.0.0" "platforms;android-37.0" "ndk;$NDK_VERSION"
           echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"
           echo "NDK_HOME=$SDK/ndk/$NDK_VERSION" >> "$GITHUB_ENV"
           echo "ANDROID_NDK_HOME=$SDK/ndk/$NDK_VERSION" >> "$GITHUB_ENV"
